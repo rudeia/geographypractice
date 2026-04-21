@@ -1,387 +1,398 @@
-
-// ========== 데이터 로드 ==========
+// ========= 데이터 로드 =========
 let DATA = null;
+let currentUnit = null;
+let pages = [];          // [ [blockIdx...], [...] ]
+let currentPageIdx = 0;
 
-async function loadData() {
+// 타임어택 state
+let ta = {
+  running: false,
+  timer: null,
+  remaining: 0,
+  score: 0,
+  correctCount: 0,
+  wrongCount: 0,
+  blocks: [],      // 빈칸 있는 블록만
+  idx: 0,
+  history: [],     // {block, userAnswers:[{ans, user, ok}], sub, marker}
+  unit: null,
+};
+
+// ========= 유틸 =========
+function norm(s) {
+  return String(s||'').trim().replace(/\s+/g,'');
+}
+function checkAnswer(user, correct) {
+  if (!user) return false;
+  return norm(user) === norm(correct);
+}
+
+// ========= 초기화 =========
+async function init() {
   const res = await fetch('data/units.json');
   DATA = await res.json();
-  initUI();
-}
-
-function initUI() {
-  const selS = document.getElementById('unit-select');
-  const selT = document.getElementById('ta-unit-select');
-  DATA.units.forEach((u, i) => {
-    const o1 = new Option(`${u.unit_code}. ${u.title}`, i);
-    const o2 = new Option(`${u.unit_code}. ${u.title}`, i);
-    selS.add(o1); selT.add(o2);
+  const sel1 = document.getElementById('unit-select');
+  const sel2 = document.getElementById('ta-unit-select');
+  DATA.units.forEach((u,i) => {
+    const opt1 = document.createElement('option');
+    opt1.value = i; opt1.textContent = `${u.id}. ${u.title}`;
+    sel1.appendChild(opt1);
+    sel2.appendChild(opt1.cloneNode(true));
   });
-  selS.addEventListener('change', renderStudy);
-  document.getElementById('reload-btn').addEventListener('click', renderStudy);
-  document.getElementById('check-btn').addEventListener('click', checkStudy);
-  document.getElementById('reveal-btn').addEventListener('click', revealStudy);
-  document.getElementById('blank-count').addEventListener('change', renderStudy);
-  // tabs
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));
-      t.classList.add('active');
-      document.getElementById(t.dataset.tab).classList.add('active');
+
+  // 탭
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      document.getElementById('panel-' + target).classList.add('active');
     });
   });
-  document.getElementById('ta-start').addEventListener('click', startTA);
-  document.getElementById('ta-stop').addEventListener('click', stopTA);
-  renderStudy();
-}
 
-// ========== 유틸 ==========
-function normalizeAnswer(s) {
-  return (s||'').replace(/\s+/g,'').toLowerCase().trim();
-}
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length-1; i>0; i--) {
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+  // 학습 모드 이벤트
+  document.getElementById('reload-btn').addEventListener('click', startLearn);
+  document.getElementById('check-btn').addEventListener('click', checkPage);
+  document.getElementById('reveal-btn').addEventListener('click', revealPage);
+  document.getElementById('prev-btn').addEventListener('click', ()=>navPage(-1));
+  document.getElementById('next-btn').addEventListener('click', ()=>navPage(+1));
 
-// 섹션별로 묶인 문장을 빈칸 수 맞춰 선택
-function pickSentences(unit, targetBlanks) {
-  // section 단위로 순서 유지
-  // 각 섹션에서 빈칸 있는 문장만 대상
-  const sections = unit.sections.map(s => ({
-    heading: s.heading,
-    sentences: s.sentences.filter(x => x.blank_count > 0)
-  })).filter(s => s.sentences.length > 0);
-  if (!sections.length) return [];
-  // 섹션 순서 랜덤
-  const shuffled = shuffle(sections);
-  const chosen = []; // [{heading, sentences}]
-  let total = 0;
-  for (const sec of shuffled) {
-    if (total >= targetBlanks) break;
-    const picks = shuffle(sec.sentences);
-    const subs = [];
-    for (const s of picks) {
-      subs.push(s);
-      total += s.blank_count;
-      if (total >= targetBlanks) break;
-    }
-    chosen.push({heading: sec.heading, sentences: subs});
-  }
-  return chosen;
-}
-
-// ========== 학습 모드 ==========
-function renderStudy() {
-  const ui = document.getElementById('unit-select');
-  const bc = parseInt(document.getElementById('blank-count').value) || 10;
-  const unit = DATA.units[parseInt(ui.value)||0];
-  const area = document.getElementById('study-area');
-  const summary = document.getElementById('study-summary');
-  summary.textContent = ''; summary.className = 'summary';
-  area.innerHTML = '';
-  const picked = pickSentences(unit, bc);
-  picked.forEach((sec, si) => {
-    const h = document.createElement('p');
-    h.className = 'section-head';
-    h.textContent = sec.heading;
-    area.appendChild(h);
-    sec.sentences.forEach(sent => {
-      const p = document.createElement('p');
-      p.className = 'sentence';
-      sent.segments.forEach(seg => {
-        if (seg.blank) {
-          const inp = document.createElement('input');
-          inp.className = 'blank';
-          inp.dataset.answer = seg.answer;
-          inp.size = Math.max(seg.answer.length+1, 5);
-          inp.addEventListener('input', e => {
-            const v = normalizeAnswer(e.target.value);
-            const a = normalizeAnswer(e.target.dataset.answer);
-            e.target.classList.remove('wrong');
-            if (v === a) {
-              e.target.classList.add('correct');
-              e.target.readOnly = true;
-              e.target.value = e.target.dataset.answer;
-            } else {
-              e.target.classList.remove('correct');
-            }
-          });
-          p.appendChild(inp);
-        } else {
-          p.appendChild(document.createTextNode(seg.text));
-        }
-      });
-      area.appendChild(p);
-    });
-    if (si < picked.length-1) {
-      const d = document.createElement('p');
-      d.className = 'section-divider';
-      d.textContent = '· · ·';
-      area.appendChild(d);
-    }
+  // 타임어택 이벤트
+  document.getElementById('ta-start').addEventListener('click', startTimeAttack);
+  document.getElementById('ta-submit').addEventListener('click', submitTA);
+  document.getElementById('ta-skip').addEventListener('click', skipTA);
+  document.getElementById('ta-restart').addEventListener('click', () => {
+    document.getElementById('ta-result').classList.add('hidden');
   });
+
+  // 첫 단원 자동 시작
+  startLearn();
 }
 
-function checkStudy() {
-  const inputs = document.querySelectorAll('#study-area .blank');
-  let ok = 0, ng = 0;
-  inputs.forEach(inp => {
-    if (inp.classList.contains('correct') || inp.classList.contains('revealed')) {
-      if (inp.classList.contains('correct')) ok++;
-      return;
+// ========= 학습 모드 =========
+function startLearn() {
+  const idx = +document.getElementById('unit-select').value || 0;
+  currentUnit = DATA.units[idx];
+  const perPage = Math.max(3, +document.getElementById('blanks-per-page').value || 10);
+
+  // 페이지 분할: 블록 순차로 쌓다가 빈칸 누적 >= perPage이면 page 확정, sub 경계도 강제 개행
+  pages = [];
+  let cur = [];
+  let curBlanks = 0;
+  let prevSub = null;
+  currentUnit.blocks.forEach((b, i) => {
+    if (prevSub !== null && b.sub !== prevSub && cur.length) {
+      pages.push(cur); cur = []; curBlanks = 0;
     }
-    const v = normalizeAnswer(inp.value);
-    const a = normalizeAnswer(inp.dataset.answer);
-    if (v === a) {
-      inp.classList.add('correct');
-      inp.readOnly = true;
+    cur.push(i);
+    curBlanks += b.blanks.length;
+    if (curBlanks >= perPage) {
+      pages.push(cur); cur = []; curBlanks = 0;
+    }
+    prevSub = b.sub;
+  });
+  if (cur.length) pages.push(cur);
+
+  currentPageIdx = 0;
+  renderPage();
+}
+
+function renderPage() {
+  const ws = document.getElementById('worksheet');
+  ws.innerHTML = '';
+  if (!pages.length) return;
+  const page = pages[currentPageIdx];
+  let prevSub = null;
+  page.forEach(bi => {
+    const b = currentUnit.blocks[bi];
+    if (prevSub !== null && b.sub !== prevSub) {
+      const div = document.createElement('div');
+      div.className = 'sub-divider';
+      div.textContent = '· · ·';
+      ws.appendChild(div);
+    }
+    prevSub = b.sub;
+    ws.appendChild(renderBlock(b, bi));
+  });
+
+  // 메타
+  const meta = document.getElementById('page-meta');
+  meta.textContent = `${currentUnit.id}. ${currentUnit.title} · 페이지 ${currentPageIdx+1}/${pages.length}`;
+  document.getElementById('check-result').textContent = '';
+  document.getElementById('check-result').className = 'check-result';
+}
+
+function renderBlock(b, bi) {
+  const row = document.createElement('div');
+  row.className = `block level-${b.level}`;
+  row.dataset.blockIndex = bi;
+
+  const marker = document.createElement('span');
+  marker.className = 'marker';
+  marker.textContent = b.marker;
+  row.appendChild(marker);
+
+  const body = document.createElement('span');
+  body.className = 'body';
+  // 본문 렌더: blanks 기준 분할
+  let pos = 0;
+  b.blanks.forEach((bk, bki) => {
+    if (bk.start > pos) {
+      body.appendChild(document.createTextNode(b.body.slice(pos, bk.start)));
+    }
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'blank';
+    inp.dataset.answer = bk.answer;
+    inp.dataset.bi = bi;
+    inp.dataset.bki = bki;
+    // 너비: 답 길이에 비례
+    inp.style.width = Math.max(3, bk.answer.replace(/\s/g,'').length) + 'em';
+    inp.autocomplete = 'off';
+    inp.spellcheck = false;
+    inp.addEventListener('input', onBlankInput);
+    body.appendChild(inp);
+    pos = bk.end;
+  });
+  if (pos < b.body.length) {
+    body.appendChild(document.createTextNode(b.body.slice(pos)));
+  }
+  row.appendChild(body);
+  return row;
+}
+
+function onBlankInput(e) {
+  const inp = e.target;
+  if (checkAnswer(inp.value, inp.dataset.answer)) {
+    inp.classList.add('correct');
+    inp.classList.remove('wrong');
+    inp.value = inp.dataset.answer;
+    // 포커스 다음으로
+    const inps = [...document.querySelectorAll('.blank:not(.correct):not(.revealed)')];
+    if (inps.length) inps[0].focus();
+  }
+}
+
+function checkPage() {
+  const inps = document.querySelectorAll('#worksheet .blank');
+  let correct = 0, wrong = 0, empty = 0;
+  inps.forEach(inp => {
+    if (inp.classList.contains('correct')) { correct++; return; }
+    if (inp.classList.contains('revealed')) return;
+    if (!inp.value.trim()) { empty++; return; }
+    if (checkAnswer(inp.value, inp.dataset.answer)) {
+      inp.classList.add('correct'); inp.classList.remove('wrong');
       inp.value = inp.dataset.answer;
-      ok++;
+      correct++;
     } else {
-      inp.classList.remove('correct');
       inp.classList.add('wrong');
-      ng++;
+      wrong++;
     }
   });
-  const summary = document.getElementById('study-summary');
-  summary.textContent = `정답 ${ok}개 · 오답 ${ng}개`;
-  summary.className = 'summary' + (ng===0 && ok>0 ? ' ok' : '');
-}
-
-function revealStudy() {
-  document.querySelectorAll('#study-area .blank').forEach(inp => {
-    if (!inp.classList.contains('correct')) {
-      inp.value = inp.dataset.answer;
-      inp.classList.remove('wrong');
-      inp.classList.add('revealed');
-      inp.readOnly = true;
-    }
-  });
-}
-
-// ========== 타임어택 ==========
-let TA = null;
-
-function startTA() {
-  const ui = document.getElementById('ta-unit-select');
-  const time = parseInt(document.getElementById('ta-time').value) || 60;
-  const unit = DATA.units[parseInt(ui.value)||0];
-  TA = {
-    score: 0, correct: 0, wrong: 0,
-    timeLeft: time,
-    history: [],  // {heading, segments, userInputs(per blank): string, correct: bool[]}
-    unit,
-    currentSentence: null,
-    currentHeading: null,
-    remainingSentences: flattenSentences(unit),
-    timer: null,
-  };
-  if (!TA.remainingSentences.length) {
-    alert('이 단원에는 빈칸 문장이 없습니다.');
-    return;
+  const r = document.getElementById('check-result');
+  if (wrong === 0 && empty === 0) {
+    r.textContent = `🎉 모두 정답! (${correct}개)`;
+    r.className = 'check-result success';
+  } else {
+    r.textContent = `정답 ${correct}개 · 오답 ${wrong}개 · 빈칸 ${empty}개`;
+    r.className = 'check-result warn';
   }
-  TA.remainingSentences = shuffle(TA.remainingSentences);
-  document.getElementById('ta-start').disabled = true;
-  document.getElementById('ta-stop').disabled = false;
-  document.getElementById('ta-history').innerHTML = '';
+}
+
+function revealPage() {
+  const inps = document.querySelectorAll('#worksheet .blank');
+  inps.forEach(inp => {
+    if (inp.classList.contains('correct')) return;
+    inp.value = inp.dataset.answer;
+    inp.classList.remove('wrong');
+    inp.classList.add('revealed');
+  });
+}
+
+function navPage(delta) {
+  const next = currentPageIdx + delta;
+  if (next < 0 || next >= pages.length) return;
+  currentPageIdx = next;
+  renderPage();
+  window.scrollTo({top: 0, behavior:'smooth'});
+}
+
+// ========= 타임어택 =========
+function startTimeAttack() {
+  const idx = +document.getElementById('ta-unit-select').value || 0;
+  const secs = Math.max(10, +document.getElementById('ta-time').value || 180);
+  ta.unit = DATA.units[idx];
+  ta.blocks = ta.unit.blocks.filter(b => b.blanks.length > 0);
+  // 섞기
+  for (let i = ta.blocks.length-1; i>0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [ta.blocks[i], ta.blocks[j]] = [ta.blocks[j], ta.blocks[i]];
+  }
+  ta.idx = 0;
+  ta.score = 0;
+  ta.correctCount = 0;
+  ta.wrongCount = 0;
+  ta.history = [];
+  ta.remaining = secs;
+  ta.running = true;
+
+  document.getElementById('ta-status').classList.remove('hidden');
+  document.getElementById('ta-block').classList.remove('hidden');
+  document.getElementById('ta-actions').classList.remove('hidden');
+  document.getElementById('ta-result').classList.add('hidden');
+  document.getElementById('ta-total').textContent = ta.blocks.length;
+
   updateTAStatus();
-  nextTASentence();
-  TA.timer = setInterval(() => {
-    TA.timeLeft--;
-    if (TA.timeLeft <= 0) {
-      TA.timeLeft = 0;
-      endTA();
-    }
+  renderTABlock();
+  if (ta.timer) clearInterval(ta.timer);
+  ta.timer = setInterval(() => {
+    ta.remaining--;
     updateTAStatus();
+    if (ta.remaining <= 0) endTA();
   }, 1000);
 }
 
-function flattenSentences(unit) {
-  const list = [];
-  unit.sections.forEach(sec => {
-    sec.sentences.forEach(s => {
-      if (s.blank_count > 0) list.push({heading: sec.heading, ...s});
+function updateTAStatus() {
+  document.getElementById('ta-remaining').textContent = ta.remaining;
+  document.getElementById('ta-score').textContent = ta.score;
+  document.getElementById('ta-idx').textContent = Math.min(ta.idx+1, ta.blocks.length);
+}
+
+function renderTABlock() {
+  if (ta.idx >= ta.blocks.length) { endTA(); return; }
+  const b = ta.blocks[ta.idx];
+  const ws = document.getElementById('ta-block');
+  ws.innerHTML = '';
+  const row = renderBlock(b, ta.idx);
+  row.classList.add('level-' + b.level);
+  ws.appendChild(row);
+  // 첫 빈칸 포커스
+  const first = ws.querySelector('.blank');
+  if (first) first.focus();
+
+  // Enter로 제출
+  ws.querySelectorAll('.blank').forEach(inp => {
+    // TA에서는 input 이벤트로 자동 정답 확정 X (한번에 확인)
+    inp.removeEventListener('input', onBlankInput);
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitTA(); }
     });
   });
-  return list;
-}
-
-function stopTA() { endTA(); }
-
-function endTA() {
-  if (!TA) return;
-  clearInterval(TA.timer);
-  document.getElementById('ta-start').disabled = false;
-  document.getElementById('ta-stop').disabled = true;
-  document.getElementById('ta-area').innerHTML = '';
-  renderTAHistory();
-  TA = null;
-}
-
-function updateTAStatus() {
-  if (!TA) return;
-  document.getElementById('ta-score').textContent = TA.score;
-  document.getElementById('ta-timer').textContent = TA.timeLeft + 's';
-  document.getElementById('ta-count').textContent = `${TA.correct} / ${TA.wrong}`;
-}
-
-function nextTASentence() {
-  if (!TA) return;
-  if (!TA.remainingSentences.length) {
-    TA.remainingSentences = shuffle(flattenSentences(TA.unit));
-  }
-  const sent = TA.remainingSentences.shift();
-  TA.currentSentence = sent;
-  const area = document.getElementById('ta-area');
-  area.innerHTML = '';
-  // heading
-  const h = document.createElement('p');
-  h.className = 'section-head';
-  h.textContent = sent.heading;
-  area.appendChild(h);
-  const p = document.createElement('p');
-  p.className = 'sentence';
-  const inputs = [];
-  sent.segments.forEach(seg => {
-    if (seg.blank) {
-      const inp = document.createElement('input');
-      inp.className = 'blank';
-      inp.dataset.answer = seg.answer;
-      inp.size = Math.max(seg.answer.length+1, 5);
-      inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          submitTA();
-        }
-      });
-      p.appendChild(inp);
-      inputs.push(inp);
-    } else {
-      p.appendChild(document.createTextNode(seg.text));
-    }
-  });
-  area.appendChild(p);
-  // 확인 버튼
-  const btn = document.createElement('button');
-  btn.className = 'btn primary';
-  btn.textContent = '입력 확인';
-  btn.style.marginTop = '12px';
-  btn.addEventListener('click', submitTA);
-  area.appendChild(btn);
-  TA.currentInputs = inputs;
-  if (inputs.length) inputs[0].focus();
 }
 
 function submitTA() {
-  if (!TA || !TA.currentSentence) return;
-  const inputs = TA.currentInputs;
-  const userInputs = [];
-  const correctFlags = [];
-  let allCorrect = true;
-  inputs.forEach(inp => {
-    const v = normalizeAnswer(inp.value);
-    const a = normalizeAnswer(inp.dataset.answer);
-    const ok = (v === a);
-    userInputs.push(inp.value);
-    correctFlags.push(ok);
-    if (!ok) allCorrect = false;
+  if (!ta.running) return;
+  const b = ta.blocks[ta.idx];
+  const inps = document.querySelectorAll('#ta-block .blank');
+  const userAnswers = [];
+  let thisCorrect = 0, thisWrong = 0;
+  inps.forEach(inp => {
+    const user = inp.value.trim();
+    const ans = inp.dataset.answer;
+    const ok = checkAnswer(user, ans);
+    userAnswers.push({ans, user, ok});
+    if (ok) {
+      ta.score += 10;
+      ta.correctCount++;
+      thisCorrect++;
+      inp.classList.add('correct');
+      inp.value = ans;
+    } else {
+      ta.score = Math.max(0, ta.score - 5);
+      ta.wrongCount++;
+      thisWrong++;
+      inp.classList.add('wrong');
+    }
   });
-  // 점수 반영
-  if (allCorrect && inputs.length > 0) {
-    TA.score += 10;
-    TA.correct++;
-    flash('정답! +10', 'ok');
+  ta.history.push({
+    marker: b.marker,
+    level: b.level,
+    body: b.body,
+    blanks: b.blanks,
+    userAnswers,
+    sub: b.sub,
+  });
+  // 플래시
+  const fl = document.getElementById('ta-flash');
+  if (thisWrong === 0) {
+    fl.className = 'ta-flash correct';
+    fl.textContent = `정답! +${thisCorrect*10}`;
   } else {
-    TA.score = Math.max(0, TA.score - 5);
-    TA.wrong++;
-    flash('오답 -5', 'ng');
+    fl.className = 'ta-flash wrong';
+    fl.textContent = `오답 포함 (정답 +${thisCorrect*10} / 오답 -${thisWrong*5})`;
   }
-  // 기록
-  TA.history.push({
-    heading: TA.currentSentence.heading,
-    segments: TA.currentSentence.segments,
-    userInputs,
-    correctFlags,
-    allCorrect,
-  });
   updateTAStatus();
-  setTimeout(() => { if (TA) nextTASentence(); }, 600);
+  // 0.7초 후 다음
+  setTimeout(() => {
+    fl.textContent = '';
+    ta.idx++;
+    renderTABlock();
+  }, 750);
 }
 
-function flash(text, cls) {
-  const el = document.getElementById('ta-flash');
-  el.textContent = text;
-  el.className = 'flash show ' + cls;
-  setTimeout(() => { el.classList.remove('show'); }, 550);
+function skipTA() {
+  if (!ta.running) return;
+  const b = ta.blocks[ta.idx];
+  ta.history.push({
+    marker: b.marker,
+    level: b.level,
+    body: b.body,
+    blanks: b.blanks,
+    userAnswers: b.blanks.map(bk => ({ans: bk.answer, user: '', ok: false})),
+    sub: b.sub,
+    skipped: true,
+  });
+  ta.idx++;
+  renderTABlock();
 }
 
-function renderTAHistory() {
-  const el = document.getElementById('ta-history');
-  el.innerHTML = '';
-  const score = TA ? TA.score : document.getElementById('ta-score').textContent;
-  const title = document.createElement('h3');
-  title.textContent = `📝 풀이 기록 (${arguments.length > 0 ? '' : ''}${document.getElementById('ta-count').textContent})`;
-  el.appendChild(title);
-  // history from module-level backup (since TA might be nulled)
-  const hist = TA_HISTORY_BACKUP;
-  if (!hist.length) {
-    const p = document.createElement('p');
-    p.style.color = 'var(--muted)';
-    p.style.fontSize = '14px';
-    p.textContent = '풀이 기록이 없습니다.';
-    el.appendChild(p);
+function endTA() {
+  ta.running = false;
+  clearInterval(ta.timer);
+  document.getElementById('ta-status').classList.add('hidden');
+  document.getElementById('ta-block').classList.add('hidden');
+  document.getElementById('ta-actions').classList.add('hidden');
+  const res = document.getElementById('ta-result');
+  res.classList.remove('hidden');
+  document.getElementById('ta-final-score').textContent = ta.score;
+  document.getElementById('ta-final-correct').textContent = ta.correctCount;
+  document.getElementById('ta-final-wrong').textContent = ta.wrongCount;
+
+  // 히스토리 렌더
+  const hbox = document.getElementById('ta-history');
+  hbox.innerHTML = '';
+  if (!ta.history.length) {
+    hbox.innerHTML = '<div class="history-item">기록이 없습니다.</div>';
     return;
   }
-  hist.forEach((h, idx) => {
-    const div = document.createElement('div');
-    div.className = 'history-item ' + (h.allCorrect ? 'ok' : 'ng');
-    const hd = document.createElement('div');
-    hd.className = 'heading';
-    hd.textContent = `${idx+1}. ${h.heading}  ${h.allCorrect ? '⭕' : '❌'}`;
-    div.appendChild(hd);
-    const sentDiv = document.createElement('div');
-    let bi = 0;
-    h.segments.forEach(seg => {
-      if (seg.blank) {
-        const ok = h.correctFlags[bi];
-        const user = h.userInputs[bi] || '(빈칸)';
-        if (ok) {
-          const span = document.createElement('span');
-          span.className = 'ans-ok';
-          span.textContent = seg.answer;
-          sentDiv.appendChild(span);
-        } else {
-          const span1 = document.createElement('span');
-          span1.className = 'ans-ng';
-          span1.textContent = user;
-          sentDiv.appendChild(span1);
-          sentDiv.appendChild(document.createTextNode(' → '));
-          const span2 = document.createElement('span');
-          span2.className = 'ans-correct';
-          span2.textContent = seg.answer;
-          sentDiv.appendChild(span2);
-        }
-        bi++;
+  ta.history.forEach(h => {
+    const item = document.createElement('div');
+    const allCorrect = h.userAnswers.every(u=>u.ok);
+    item.className = 'history-item ' + (allCorrect ? 'correct' : 'wrong');
+    // 본문 렌더
+    let html = `<span class="h-marker">${h.marker}</span> `;
+    let pos = 0;
+    h.blanks.forEach((bk, i) => {
+      if (bk.start > pos) html += escapeHtml(h.body.slice(pos, bk.start));
+      const u = h.userAnswers[i];
+      if (u.ok) {
+        html += `<span class="h-answer">[${escapeHtml(bk.answer)}]</span>`;
       } else {
-        sentDiv.appendChild(document.createTextNode(seg.text));
+        if (u.user) html += `<span class="h-user-wrong">[${escapeHtml(u.user)}]</span> → <span class="h-answer">[${escapeHtml(bk.answer)}]</span>`;
+        else html += `<span class="h-answer">[${escapeHtml(bk.answer)}]</span>`;
       }
+      pos = bk.end;
     });
-    div.appendChild(sentDiv);
-    el.appendChild(div);
+    if (pos < h.body.length) html += escapeHtml(h.body.slice(pos));
+    item.innerHTML = html;
+    hbox.appendChild(item);
   });
 }
 
-// history backup for when TA ends
-let TA_HISTORY_BACKUP = [];
-const _origEndTA = endTA;
-endTA = function() {
-  if (TA) { TA_HISTORY_BACKUP = TA.history.slice(); }
-  _origEndTA();
-};
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 
-loadData();
+// ========= 실행 =========
+init();
