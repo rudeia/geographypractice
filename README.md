@@ -1,47 +1,29 @@
-# 세계시민과 지리 · 빈칸 학습지 (MVP)
+# 세계시민과 지리 · 빈칸 학습 사이트 v3
 
-정적 사이트입니다. 서버가 필요 없으며, GitHub Pages 또는 Cloudflare Pages로 바로 배포할 수 있습니다.
+## 포함 단원 (총 13개)
+- Ⅰ. 세계화와 지역 이해 (3단원)
+- Ⅱ. 세계의 자연환경과 인간 생활 (4단원)
+- Ⅲ. 세계의 인구·식량·경제 (3단원)
+- Ⅳ. 에너지·환경·평화 (3단원)
 
-## 폴더 구조
+## 로컬 실행
 ```
-/
-├── index.html
-├── css/style.css
-├── js/app.js
-└── data/units.json   # 단원별 학습 데이터
-```
-
-## 로컬에서 확인
-프로젝트 루트에서 간단히 웹서버를 띄우세요. (예: Python)
-```bash
 python -m http.server 8080
-# 브라우저에서 http://localhost:8080
+# 브라우저: http://localhost:8080
 ```
-> `fetch('data/units.json')` 때문에 파일을 바로 여는 것(`file://`)은 동작하지 않습니다. 꼭 로컬 서버로 열어주세요.
+> ⚠️ file:// 로 직접 열면 JSON을 불러오지 못합니다. 반드시 로컬 서버로 띄워주세요.
 
-## Cloudflare Pages 배포
-1. 이 폴더를 GitHub 레포지토리에 업로드 (push)
-2. Cloudflare 대시보드 → **Workers & Pages → Create → Pages → Connect to Git**
-3. 레포 선택 → Framework preset: **None** → Build command 비움 → Build output directory: `/`(루트)
+## 배포 (GitHub + Cloudflare Pages)
+1. 이 폴더를 그대로 GitHub 레포에 push
+2. Cloudflare → Workers & Pages → Create → Pages → Connect to Git
+3. Build command: (비움) / Build output directory: `/`
 4. Deploy
 
-## 사용법
-- 상단에서 **단원**을 선택하고 **시작** 버튼을 누르면 빈칸 학습지가 생성됩니다.
-- **빈칸 수**는 기본 10개, 1~50 조절 가능.
-- 입력하는 즉시 정답이면 초록색으로 고정됩니다.
-- **타임어택** 탭에서는 제한 시간 동안 풀며, 엔터로 제출하면 오답 시 5점 감점(최소 0점), 정답 시 10점 상승합니다.
+## 기능
+- 학습 모드: 단원 선택 + 빈칸 개수 조절(1~50) + 실시간 채점
+- 타임어택: 시간 조절(10~600초), 정답 +10 / 오답 -5 / 최소 0점
+- 섹션 구분선: 다른 소단원 문장 사이에 `· · ·` 표시
+- 반응형: 모바일/태블릿/데스크톱 자동 대응
 
-## 데이터 추가
-`data/units.json`에 아래 형식으로 단원을 추가하세요.
-```json
-{
-  "id": "ch5_①",
-  "chapter": "5",
-  "title": "5. 단원 제목 - ①",
-  "sentences": [
-    "문장1...",
-    "문장2..."
-  ]
-}
-```
-빈칸은 JS가 자동으로 조사를 제외한 한글 단어 중에서 무작위로 선택합니다.
+## 데이터 수정
+`data/units.json` 을 직접 편집하거나, 새 PDF 텍스트를 주시면 다시 파싱하여 업데이트합니다.
