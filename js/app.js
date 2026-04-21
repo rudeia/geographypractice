@@ -11,6 +11,25 @@ function norm(s) {
   return String(s).replace(/[\s·•・\/\-_,]/g, '').toLowerCase();
 }
 
+// 정답 글자 수 기반으로 입력칸 너비 계산 (한글은 거의 1em = 1ch 이상)
+function blankWidth(ans) {
+  // 한글 문자 ~ 1em, 영숫자 ~ 0.55em 로 가산
+  let units = 0;
+  for (const c of String(ans)) {
+    units += /[a-zA-Z0-9]/.test(c) ? 0.6 : 1.0;
+  }
+  // 최소 2글자 정도 여유
+  units = Math.max(2, units + 0.3);
+  return units;
+}
+function applyBlankWidth(input, ans) {
+  const units = blankWidth(ans);
+  input.style.width = units + 'em';
+  input.style.minWidth = '2.4em';
+  input.style.maxWidth = '14em';
+  input.size = Math.max(2, String(ans).length);
+}
+
 async function load() {
   const r = await fetch('data/data.json');
   state.data = await r.json();
@@ -126,15 +145,14 @@ function renderStudy() {
   sh.className = 'sub-title';
   sh.textContent = `${s.num}. ${s.title}`;
   b.appendChild(sh);
-  renderDetail(b, d, `${m.id}·${s.num}·${d.num}`);
+  renderDetail(b, d, true);
 }
 
-function renderDetail(container, d, pathLabel) {
-  // Show each line
+// showLiveBadge: true면 입력 중 정답 일치 시 "정답" 뱃지 표시
+function renderDetail(container, d, showLiveBadge) {
   d.lines.forEach(ln => {
     const el = document.createElement('div');
     el.className = 'detail-line level-' + ln.level;
-    // Replace 【B0】... with inputs, using d.answers
     const parts = ln.body.split(/【B(\d+)】/);
     parts.forEach((p, i) => {
       if (i % 2 === 0) {
@@ -145,25 +163,49 @@ function renderDetail(container, d, pathLabel) {
         input.type = 'text';
         input.className = 'blank';
         input.dataset.idx = idx;
+        input.autocapitalize = 'off';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
         const ans = d.answers[idx] || '';
-        input.style.minWidth = Math.max(60, ans.length*18) + 'px';
-        input.addEventListener('input', (e)=>{
-          if (norm(e.target.value) === norm(ans)) {
-            e.target.classList.remove('wrong');
-            e.target.classList.add('correct');
-          } else {
-            e.target.classList.remove('correct','wrong');
-          }
-        });
-        el.appendChild(input);
+        applyBlankWidth(input, ans);
+
+        // 정답 뱃지 컨테이너
+        const wrap = document.createElement('span');
+        wrap.style.whiteSpace = 'nowrap';
+        wrap.appendChild(input);
+
+        if (showLiveBadge) {
+          const badge = document.createElement('span');
+          badge.className = 'blank-ok';
+          badge.textContent = '정답';
+          badge.style.display = 'none';
+          wrap.appendChild(badge);
+
+          input.addEventListener('input', (e)=>{
+            if (norm(e.target.value) === norm(ans)) {
+              e.target.classList.remove('wrong');
+              e.target.classList.add('correct');
+              badge.style.display = 'inline-block';
+            } else {
+              e.target.classList.remove('correct','wrong');
+              badge.style.display = 'none';
+            }
+          });
+        } else {
+          input.addEventListener('input', (e)=>{
+            if (norm(e.target.value) === norm(ans)) {
+              e.target.classList.remove('wrong');
+              e.target.classList.add('correct');
+            } else {
+              e.target.classList.remove('correct','wrong');
+            }
+          });
+        }
+        el.appendChild(wrap);
       }
     });
     container.appendChild(el);
   });
-  // If first line has num marker, prepend it to the first detail-line
-  // Actually we'll just leave as-is; user sees ⑴ via original body when level=detail
-  // But our body for detail level may not include ⑴ marker. Let's add manually.
-  // Check first child to prepend with detail num
   const firstLine = container.querySelectorAll('.detail-line.level-detail')[0];
   if (firstLine && !firstLine.textContent.trim().startsWith(d.num)) {
     firstLine.insertBefore(document.createTextNode(d.num + ' '), firstLine.firstChild);
@@ -176,12 +218,15 @@ function checkStudy() {
     const idx = +inp.dataset.idx;
     const d = state.data[state.study.mi].subs[state.study.si].details[state.study.di];
     const ans = d.answers[idx];
+    const badge = inp.parentElement.querySelector('.blank-ok');
     if (norm(inp.value) === norm(ans)) {
       inp.classList.remove('wrong');
       inp.classList.add('correct');
+      if (badge) badge.style.display = 'inline-block';
     } else {
       inp.classList.remove('correct');
       inp.classList.add('wrong');
+      if (badge) badge.style.display = 'none';
     }
   });
 }
@@ -194,6 +239,8 @@ function revealStudy() {
     inp.value = d.answers[idx];
     inp.classList.remove('wrong');
     inp.classList.add('correct');
+    const badge = inp.parentElement.querySelector('.blank-ok');
+    if (badge) badge.style.display = 'inline-block';
   });
 }
 
@@ -222,7 +269,6 @@ function startRandom() {
       }
     });
   });
-  // shuffle
   for (let i = pool.length -1; i>0; i--) {
     const j = Math.floor(Math.random()*(i+1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -262,12 +308,10 @@ function renderRandom() {
   sh.className = 'sub-title';
   sh.textContent = `${s.num}. ${s.title}`;
   b.appendChild(sh);
-  renderDetail(b, d, `${m.id}·${s.num}·${d.num}`);
+  renderDetail(b, d, true);  // 랜덤학습도 실시간 정답 뱃지
 
-  // submit button
   const btn = document.createElement('button');
   btn.textContent = state.random.idx === state.random.queue.length - 1 ? '결과 보기' : '다음 문제 ▶';
-  btn.className = '';
   btn.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.12);color:var(--chalk);border:1px solid var(--chalk-yellow);border-radius:6px;padding:10px 20px;cursor:pointer;font-family:inherit;font-size:14px;';
   btn.addEventListener('click', submitRandom);
   b.appendChild(btn);
@@ -366,10 +410,9 @@ function initAttack() {
 }
 
 function startAttack() {
-  if (state.attack.running) return;  // prevent multi-speed
+  if (state.attack.running) return;
   const miVal = document.getElementById('attack-middle').value;
   const time = +document.getElementById('attack-time').value || 60;
-  // Build pool
   const pool = [];
   const targets = miVal === 'ALL' ? state.data : [state.data[+miVal]];
   targets.forEach(m => {
@@ -383,7 +426,6 @@ function startAttack() {
       });
     });
   });
-  // shuffle
   for (let i = pool.length-1; i>0; i--) {
     const j = Math.floor(Math.random()*(i+1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -434,7 +476,6 @@ function stopAttack() {
   document.getElementById('attack-start').disabled = false;
   document.getElementById('attack-middle').disabled = false;
   document.getElementById('attack-time').disabled = false;
-  // show dedup records
   const r = document.getElementById('attack-result');
   r.classList.remove('hidden');
   r.innerHTML = '';
@@ -445,7 +486,6 @@ function stopAttack() {
   sum.innerHTML = `<div style="font-size:18px;font-weight:700;color:var(--chalk-yellow);margin-bottom:6px;">타임어택 종료</div>
     최종 점수: <b>${state.attack.score}</b> · 정답 ${correct} · 오답 ${wrong}`;
   r.appendChild(sum);
-  // Deduplicate: key = m.id|s.num|d.num|bi|userInput
   const seen = new Set();
   state.attack.records.forEach(rec => {
     const key = `${rec.m.id}|${rec.s.num}|${rec.d.num}|${rec.bi}|${rec.user}`;
@@ -457,10 +497,8 @@ function stopAttack() {
     path.className = 'qpath';
     path.textContent = `${rec.m.id}. ${rec.m.title} / ${rec.s.num}. ${rec.s.title} / ${rec.d.num}`;
     div.appendChild(path);
-    // show the specific line with highlighted blank
     const ans = rec.d.answers[rec.bi];
     const p = document.createElement('div');
-    // find which line has this blank idx
     for (const ln of rec.d.lines) {
       if (ln.body.includes(`【B${rec.bi}】`)) {
         const parts = ln.body.split(/【B(\d+)】/);
@@ -499,7 +537,6 @@ function renderAttack() {
   }
   const it = state.attack.pool[state.attack.idx];
   const {m, s, d, bi} = it;
-  // show path
   const header = document.createElement('div');
   header.className = 'chapter-title';
   header.textContent = `${m.id}. ${m.title}`;
@@ -509,7 +546,6 @@ function renderAttack() {
   sh.textContent = `${s.num}. ${s.title}`;
   b.appendChild(sh);
 
-  // Render full detail; but only the target blank is editable
   d.lines.forEach(ln => {
     const el = document.createElement('div');
     el.className = 'detail-line level-' + ln.level;
@@ -524,8 +560,11 @@ function renderAttack() {
           input.type = 'text';
           input.className = 'blank';
           input.autofocus = true;
+          input.autocapitalize = 'off';
+          input.autocomplete = 'off';
+          input.spellcheck = false;
           const ans = d.answers[idx];
-          input.style.minWidth = Math.max(60, ans.length*18) + 'px';
+          applyBlankWidth(input, ans);
           input.addEventListener('keydown', (e)=>{
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -534,7 +573,6 @@ function renderAttack() {
           });
           el.appendChild(input);
         } else {
-          // fill with actual answer dimmed
           const span = document.createElement('span');
           span.textContent = d.answers[idx];
           span.style.color = 'var(--chalk-dim)';
@@ -546,7 +584,6 @@ function renderAttack() {
     b.appendChild(el);
   });
 
-  // submit button
   const btn = document.createElement('button');
   btn.textContent = '입력 확인';
   btn.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.12);color:var(--chalk);border:1px solid var(--chalk-yellow);border-radius:6px;padding:10px 20px;cursor:pointer;font-family:inherit;font-size:14px;';

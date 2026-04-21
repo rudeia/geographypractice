@@ -37,6 +37,10 @@ body {
   letter-spacing: 0.02em;
   color: var(--chalk-yellow);
   text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: clamp(15px, 4.2vw, 22px);
 }
 .tabs {
   display: flex;
@@ -44,6 +48,8 @@ body {
   border-bottom: 1px dashed rgba(243,240,228,0.3);
   padding-bottom: 10px;
   margin-bottom: 14px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 .tab {
   background: transparent;
@@ -54,6 +60,8 @@ body {
   cursor: pointer;
   font-size: 14px;
   font-family: inherit;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .tab.active {
   background: rgba(255,255,255,0.08);
@@ -91,6 +99,7 @@ input[type="number"] { min-width: 80px; }
   display: flex;
   gap: 6px;
   margin-left: auto;
+  flex-wrap: nowrap;
 }
 .nav-btns button {
   background: rgba(255,255,255,0.08);
@@ -101,6 +110,8 @@ input[type="number"] { min-width: 80px; }
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 .nav-btns button:hover:not(:disabled) { background: rgba(255,255,255,0.16); }
 .nav-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -131,13 +142,12 @@ input[type="number"] { min-width: 80px; }
   font-size: 17px;
   margin: 14px 0 6px;
 }
-.detail-line {
-  margin: 4px 0;
-}
+.detail-line { margin: 4px 0; }
 .detail-line.level-detail { padding-left: 0.2em; color: var(--chalk); }
 .detail-line.level-item { padding-left: 1.6em; color: var(--chalk); }
 .detail-line.level-dash { padding-left: 2.6em; color: var(--chalk-dim); }
 
+/* ===== 입력칸: 글자수 맞춤 (정답 글자수 기반) ===== */
 input.blank {
   background: rgba(0,0,0,0.35);
   color: var(--chalk-yellow);
@@ -145,11 +155,11 @@ input.blank {
   border-bottom: 2px solid var(--chalk-yellow);
   font-family: inherit;
   font-size: 15px;
-  padding: 1px 6px;
-  min-width: 90px;
+  padding: 1px 4px;
   text-align: center;
   outline: none;
   margin: 0 2px;
+  /* width 는 JS 인라인으로 ch 단위 지정 */
 }
 input.blank:focus { border-bottom-color: var(--chalk-blue); }
 input.blank.correct {
@@ -166,6 +176,24 @@ input.blank.wrong {
   25% { transform: translateX(-3px); }
   75% { transform: translateX(3px); }
 }
+/* 정답 표시 뱃지 (학습/랜덤에서 실시간) */
+.blank-ok {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f4a34;
+  background: var(--chalk-green);
+  border-radius: 10px;
+  vertical-align: middle;
+  animation: pop 0.22s ease-out;
+}
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 .feedback {
   font-size: 12px;
   margin-left: 4px;
@@ -220,4 +248,53 @@ input.blank.wrong {
   pointer-events: none;
   z-index: 5;
   user-select: none;
+}
+
+/* ===== 모바일 대응 ===== */
+@media (max-width: 640px) {
+  body { padding: 6px; }
+  .app {
+    padding: 14px 12px 22px;
+    border-width: 8px;
+    border-radius: 10px;
+  }
+  .topbar h1 {
+    font-size: clamp(13px, 4.6vw, 18px);
+    margin-bottom: 10px;
+  }
+  .tab { padding: 6px 10px; font-size: 13px; }
+  .controls { gap: 8px 10px; }
+  .controls label { font-size: 11px; }
+  select, input[type="number"] {
+    min-width: 0;
+    width: 100%;
+    font-size: 13px;
+    padding: 5px 7px;
+  }
+  .controls > label { flex: 1 1 45%; min-width: 0; }
+  .nav-btns {
+    margin-left: 0;
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+  .nav-btns button.btn-compact {
+    padding: 7px 8px;
+    font-size: 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .attack-status { font-size: 13px; gap: 10px; flex: 1 1 100%; justify-content: flex-end; }
+  .board { font-size: 14px; line-height: 1.75; }
+  .chapter-title { font-size: 15px; }
+  .sub-title { font-size: 14px; }
+  .detail-line.level-item { padding-left: 1.1em; }
+  .detail-line.level-dash { padding-left: 1.8em; }
+  input.blank { font-size: 14px; padding: 1px 3px; }
+  .watermark { font-size: 10px; right: 10px; bottom: 6px; }
+}
+
+/* 아주 작은 화면 */
+@media (max-width: 380px) {
+  .nav-btns button.btn-compact { padding: 6px 5px; font-size: 11px; }
+  .tab { padding: 5px 8px; font-size: 12px; }
 }
