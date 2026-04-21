@@ -1,20 +1,27 @@
-# 세계시민과 지리 · 빈칸 학습지 (v4)
+# 세계시민과 지리 - 빈칸 학습 (v7)
 
-정적 사이트 — GitHub + Cloudflare Pages 배포 가능
-
-## 로컬 실행
-```
+## 실행
+```bash
+cd site
 python -m http.server 8080
 # → http://localhost:8080
 ```
-반드시 로컬 서버로 띄워주세요. `file://`로 열면 JSON fetch가 막혀 동작하지 않습니다.
 
-## v4 주요 변경
-- ✅ 일반어/추상어 대거 차단 (사례, 개인, 의미, 종류, 방법 등 270+개)
-- ✅ 관형형·서술형·용언 필터 강화 (대한/위한/다른/있다 등 자동 제외)
-- ✅ **입력 확인 버튼** 추가 — 오답이 빨간 칸으로 명시됨
-- ✅ **정답 표시** — 정답 시 초록색 + "정답!" 플로팅 메시지
-- ✅ **타임어택 복기** — 종료 후 풀었던 모든 문장 + 정답/오답 기록 표시
+## 배포 (Cloudflare Pages)
+1. GitHub 저장소 생성 → `site` 폴더 내용 push
+2. Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git
+3. Build command: 비워둠
+4. Build output directory: `/`
+5. Deploy
 
-## 단원
-1~4단원 전체 (13개 대단원) 포함, 약 1,260개 문장 · 8,200개 빈칸 후보
+## 구조
+- `index.html` 메인
+- `css/style.css` 스타일
+- `js/app.js` 로직
+- `data/units.json` 단원/문장/빈칸 데이터
+
+## v7 변경점
+- 블랙리스트 추가: 생활, 현상, 시설, 협력, 생산량, 하천, 종교, 곡물
+- 용언 명사형(-음) 필터 강화: 많음/높음/있음 등 제외
+- "등의", "등을" 같은 부산물 제거
+- 파서: Unit 헤더 매칭 정확도 개선

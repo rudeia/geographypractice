@@ -1,350 +1,387 @@
-// ============ 전역 상태 ============
-let UNITS_DATA = null;
-const state = {
-  study: { unitId: null, blanks: [], sentences: [] },
-  ta: {
-    unitId: null, running: false, remain: 0, timer: null, score: 0,
-    correctCount: 0, wrongCount: 0,
-    queue: [], current: null,
-    history: [],  // {sectionHeader, sentenceHTML, userAnswer, correctAnswer, isCorrect}
-  }
-};
 
-// ============ 초기 로드 ============
-fetch('data/units.json').then(r => r.json()).then(data => {
-  UNITS_DATA = data;
-  initUnitSelects();
-  loadStudy();
-});
+// ========== 데이터 로드 ==========
+let DATA = null;
 
-function initUnitSelects() {
-  ['#unit-select', '#ta-unit-select'].forEach(sel => {
-    const el = document.querySelector(sel);
-    el.innerHTML = UNITS_DATA.units.map(u =>
-      `<option value="${u.id}">${u.id} ${u.title}</option>`).join('');
-  });
-  state.study.unitId = UNITS_DATA.units[0].id;
-  state.ta.unitId = UNITS_DATA.units[0].id;
+async function loadData() {
+  const res = await fetch('data/units.json');
+  DATA = await res.json();
+  initUI();
 }
 
-// ============ 탭 전환 ============
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+function initUI() {
+  const selS = document.getElementById('unit-select');
+  const selT = document.getElementById('ta-unit-select');
+  DATA.units.forEach((u, i) => {
+    const o1 = new Option(`${u.unit_code}. ${u.title}`, i);
+    const o2 = new Option(`${u.unit_code}. ${u.title}`, i);
+    selS.add(o1); selT.add(o2);
   });
-});
+  selS.addEventListener('change', renderStudy);
+  document.getElementById('reload-btn').addEventListener('click', renderStudy);
+  document.getElementById('check-btn').addEventListener('click', checkStudy);
+  document.getElementById('reveal-btn').addEventListener('click', revealStudy);
+  document.getElementById('blank-count').addEventListener('change', renderStudy);
+  // tabs
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById(t.dataset.tab).classList.add('active');
+    });
+  });
+  document.getElementById('ta-start').addEventListener('click', startTA);
+  document.getElementById('ta-stop').addEventListener('click', stopTA);
+  renderStudy();
+}
 
-// ============ 유틸 ============
-function getUnit(id) { return UNITS_DATA.units.find(u => u.id === id); }
+// ========== 유틸 ==========
+function normalizeAnswer(s) {
+  return (s||'').replace(/\s+/g,'').toLowerCase().trim();
+}
 function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+  const a = [...arr];
+  for (let i = a.length-1; i>0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// 섹션별로 묶인 문장을 빈칸 수 맞춰 선택
+function pickSentences(unit, targetBlanks) {
+  // section 단위로 순서 유지
+  // 각 섹션에서 빈칸 있는 문장만 대상
+  const sections = unit.sections.map(s => ({
+    heading: s.heading,
+    sentences: s.sentences.filter(x => x.blank_count > 0)
+  })).filter(s => s.sentences.length > 0);
+  if (!sections.length) return [];
+  // 섹션 순서 랜덤
+  const shuffled = shuffle(sections);
+  const chosen = []; // [{heading, sentences}]
+  let total = 0;
+  for (const sec of shuffled) {
+    if (total >= targetBlanks) break;
+    const picks = shuffle(sec.sentences);
+    const subs = [];
+    for (const s of picks) {
+      subs.push(s);
+      total += s.blank_count;
+      if (total >= targetBlanks) break;
+    }
+    chosen.push({heading: sec.heading, sentences: subs});
+  }
+  return chosen;
 }
 
-// ============ 학습 모드 ============
-const studyArea = document.getElementById('study-area');
-const studyFeedback = document.getElementById('study-feedback');
-
-document.getElementById('unit-select').addEventListener('change', e => {
-  state.study.unitId = e.target.value;
-  loadStudy();
-});
-document.getElementById('blank-count').addEventListener('change', loadStudy);
-document.getElementById('btn-new').addEventListener('click', loadStudy);
-document.getElementById('btn-submit').addEventListener('click', submitStudy);
-document.getElementById('btn-reveal').addEventListener('click', revealStudy);
-
-function loadStudy() {
-  studyFeedback.textContent = '';
-  studyFeedback.className = 'feedback';
-  const unit = getUnit(state.study.unitId);
-  if (!unit) return;
-  const desired = parseInt(document.getElementById('blank-count').value) || 10;
-
-  // 섹션별 문장을 모으되, 섹션 정보 보존
-  const allSentencesWithBlank = [];
-  unit.sections.forEach((sec, si) => {
+// ========== 학습 모드 ==========
+function renderStudy() {
+  const ui = document.getElementById('unit-select');
+  const bc = parseInt(document.getElementById('blank-count').value) || 10;
+  const unit = DATA.units[parseInt(ui.value)||0];
+  const area = document.getElementById('study-area');
+  const summary = document.getElementById('study-summary');
+  summary.textContent = ''; summary.className = 'summary';
+  area.innerHTML = '';
+  const picked = pickSentences(unit, bc);
+  picked.forEach((sec, si) => {
+    const h = document.createElement('p');
+    h.className = 'section-head';
+    h.textContent = sec.heading;
+    area.appendChild(h);
     sec.sentences.forEach(sent => {
-      const blankTokens = sent.tokens.filter(t => t.blank_ok);
-      if (blankTokens.length > 0) {
-        allSentencesWithBlank.push({ sent, sec, secIndex: si });
-      }
+      const p = document.createElement('p');
+      p.className = 'sentence';
+      sent.segments.forEach(seg => {
+        if (seg.blank) {
+          const inp = document.createElement('input');
+          inp.className = 'blank';
+          inp.dataset.answer = seg.answer;
+          inp.size = Math.max(seg.answer.length+1, 5);
+          inp.addEventListener('input', e => {
+            const v = normalizeAnswer(e.target.value);
+            const a = normalizeAnswer(e.target.dataset.answer);
+            e.target.classList.remove('wrong');
+            if (v === a) {
+              e.target.classList.add('correct');
+              e.target.readOnly = true;
+              e.target.value = e.target.dataset.answer;
+            } else {
+              e.target.classList.remove('correct');
+            }
+          });
+          p.appendChild(inp);
+        } else {
+          p.appendChild(document.createTextNode(seg.text));
+        }
+      });
+      area.appendChild(p);
     });
-  });
-
-  if (allSentencesWithBlank.length === 0) {
-    studyArea.innerHTML = '<div class="ws-sentence">이 단원에는 빈칸을 만들 수 있는 문장이 없습니다.</div>';
-    return;
-  }
-
-  // 빈칸 개수만큼 문장 랜덤 선택 (문장당 1빈칸 우선)
-  const picked = shuffle(allSentencesWithBlank).slice(0, desired);
-  // 섹션 순서대로 정렬 (원래 순서 보존)
-  picked.sort((a, b) => {
-    if (a.secIndex !== b.secIndex) return a.secIndex - b.secIndex;
-    return 0;
-  });
-
-  // 렌더링
-  let html = '';
-  let prevSecIndex = -1;
-  const blanks = [];
-  picked.forEach((item, idx) => {
-    const { sent, sec, secIndex } = item;
-    if (secIndex !== prevSecIndex) {
-      if (prevSecIndex !== -1) {
-        html += `<div class="ws-divider">· · ·</div>`;
-      }
-      html += `<div class="ws-section-header">${escapeHtml(sec.header)}</div>`;
-      prevSecIndex = secIndex;
+    if (si < picked.length-1) {
+      const d = document.createElement('p');
+      d.className = 'section-divider';
+      d.textContent = '· · ·';
+      area.appendChild(d);
     }
-    // 문장 내 빈칸 하나 선택
-    const blankTokens = sent.tokens.filter(t => t.blank_ok);
-    const chosen = blankTokens[Math.floor(Math.random() * blankTokens.length)];
-    const blankId = `bl-${idx}`;
-    blanks.push({ id: blankId, answer: chosen.core });
-    const parts = sent.tokens.map(t => {
-      if (t === chosen) {
-        const w = Math.max(3, chosen.core.length + 1);
-        return `<input class="blank" id="${blankId}" data-answer="${escapeHtml(chosen.core)}" size="${w}" autocomplete="off" />` +
-               escapeHtml(t.trail || '') + (t.josa ? `<span class="josa">${escapeHtml(t.josa)}</span>` : '');
-      }
-      return escapeHtml(t.raw);
-    });
-    html += `<div class="ws-sentence">· ${parts.join(' ')}</div>`;
-  });
-  studyArea.innerHTML = html;
-  state.study.blanks = blanks;
-
-  // 실시간 체크
-  studyArea.querySelectorAll('.blank').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const ans = inp.dataset.answer;
-      if (inp.value.trim() === ans) {
-        inp.classList.add('correct');
-        inp.classList.remove('wrong');
-        inp.readOnly = true;
-      } else {
-        inp.classList.remove('wrong');
-      }
-    });
   });
 }
 
-function submitStudy() {
-  const inputs = studyArea.querySelectorAll('.blank');
-  let ok = 0, bad = 0;
+function checkStudy() {
+  const inputs = document.querySelectorAll('#study-area .blank');
+  let ok = 0, ng = 0;
   inputs.forEach(inp => {
-    const ans = inp.dataset.answer;
-    const val = inp.value.trim();
-    if (val === ans) {
-      inp.classList.add('correct'); inp.classList.remove('wrong');
-      inp.readOnly = true; ok++;
-    } else if (val === '') {
-      inp.classList.remove('correct', 'wrong');
+    if (inp.classList.contains('correct') || inp.classList.contains('revealed')) {
+      if (inp.classList.contains('correct')) ok++;
+      return;
+    }
+    const v = normalizeAnswer(inp.value);
+    const a = normalizeAnswer(inp.dataset.answer);
+    if (v === a) {
+      inp.classList.add('correct');
+      inp.readOnly = true;
+      inp.value = inp.dataset.answer;
+      ok++;
     } else {
-      inp.classList.add('wrong'); inp.classList.remove('correct');
-      bad++;
+      inp.classList.remove('correct');
+      inp.classList.add('wrong');
+      ng++;
     }
   });
-  studyFeedback.className = 'feedback ' + (bad === 0 && ok > 0 ? 'ok' : 'bad');
-  if (ok > 0 && bad === 0) {
-    studyFeedback.innerHTML = `<span class="summary">🎉 모두 정답! (${ok}/${inputs.length})</span>`;
-  } else {
-    studyFeedback.innerHTML = `<span class="summary">정답 ${ok}개 · 오답 ${bad}개 — 빨간 칸을 다시 풀어보세요.</span>`;
-  }
+  const summary = document.getElementById('study-summary');
+  summary.textContent = `정답 ${ok}개 · 오답 ${ng}개`;
+  summary.className = 'summary' + (ng===0 && ok>0 ? ' ok' : '');
 }
 
 function revealStudy() {
-  const inputs = studyArea.querySelectorAll('.blank');
-  inputs.forEach(inp => {
+  document.querySelectorAll('#study-area .blank').forEach(inp => {
     if (!inp.classList.contains('correct')) {
       inp.value = inp.dataset.answer;
-      inp.classList.add('revealed');
       inp.classList.remove('wrong');
+      inp.classList.add('revealed');
       inp.readOnly = true;
     }
   });
-  studyFeedback.className = 'feedback';
-  studyFeedback.innerHTML = `<span class="summary">정답을 표시했습니다.</span>`;
 }
 
-// ============ 타임어택 ============
-const taArea = document.getElementById('ta-area');
-const taReview = document.getElementById('ta-review');
-const taReviewList = document.getElementById('ta-review-list');
-
-document.getElementById('ta-unit-select').addEventListener('change', e => {
-  state.ta.unitId = e.target.value;
-});
-document.getElementById('ta-start').addEventListener('click', startTA);
-document.getElementById('ta-stop').addEventListener('click', () => stopTA(true));
+// ========== 타임어택 ==========
+let TA = null;
 
 function startTA() {
-  const unit = getUnit(state.ta.unitId);
-  if (!unit) return;
-  const timeLimit = parseInt(document.getElementById('ta-time').value) || 60;
-  state.ta.running = true;
-  state.ta.remain = timeLimit;
-  state.ta.score = 0;
-  state.ta.correctCount = 0;
-  state.ta.wrongCount = 0;
-  state.ta.history = [];
-  // 가능한 모든 문장 모음
-  const pool = [];
-  unit.sections.forEach(sec => {
-    sec.sentences.forEach(sent => {
-      if (sent.tokens.some(t => t.blank_ok)) {
-        pool.push({ sent, sec });
-      }
-    });
-  });
-  state.ta.queue = shuffle(pool);
-  taReview.classList.add('hidden');
-  updateTAHud();
-  nextTAQuestion();
-  clearInterval(state.ta.timer);
-  state.ta.timer = setInterval(() => {
-    state.ta.remain--;
-    if (state.ta.remain <= 0) {
-      state.ta.remain = 0; stopTA(false);
+  const ui = document.getElementById('ta-unit-select');
+  const time = parseInt(document.getElementById('ta-time').value) || 60;
+  const unit = DATA.units[parseInt(ui.value)||0];
+  TA = {
+    score: 0, correct: 0, wrong: 0,
+    timeLeft: time,
+    history: [],  // {heading, segments, userInputs(per blank): string, correct: bool[]}
+    unit,
+    currentSentence: null,
+    currentHeading: null,
+    remainingSentences: flattenSentences(unit),
+    timer: null,
+  };
+  if (!TA.remainingSentences.length) {
+    alert('이 단원에는 빈칸 문장이 없습니다.');
+    return;
+  }
+  TA.remainingSentences = shuffle(TA.remainingSentences);
+  document.getElementById('ta-start').disabled = true;
+  document.getElementById('ta-stop').disabled = false;
+  document.getElementById('ta-history').innerHTML = '';
+  updateTAStatus();
+  nextTASentence();
+  TA.timer = setInterval(() => {
+    TA.timeLeft--;
+    if (TA.timeLeft <= 0) {
+      TA.timeLeft = 0;
+      endTA();
     }
-    updateTAHud();
+    updateTAStatus();
   }, 1000);
 }
 
-function stopTA(userStopped) {
-  state.ta.running = false;
-  clearInterval(state.ta.timer);
-  updateTAHud();
-  taArea.innerHTML = `<div class="ws-sentence" style="padding:20px 0; text-align:center; color:#2d6ab2; font-weight:700;">
-    ${userStopped ? '⏸ 종료됨' : '⏰ 시간 종료!'} · 최종 점수 <b>${state.ta.score}</b>점
-    (정답 ${state.ta.correctCount} / 오답 ${state.ta.wrongCount})
-  </div>`;
-  showTAReview();
+function flattenSentences(unit) {
+  const list = [];
+  unit.sections.forEach(sec => {
+    sec.sentences.forEach(s => {
+      if (s.blank_count > 0) list.push({heading: sec.heading, ...s});
+    });
+  });
+  return list;
 }
 
-function showTAReview() {
-  if (state.ta.history.length === 0) {
-    taReview.classList.add('hidden'); return;
+function stopTA() { endTA(); }
+
+function endTA() {
+  if (!TA) return;
+  clearInterval(TA.timer);
+  document.getElementById('ta-start').disabled = false;
+  document.getElementById('ta-stop').disabled = true;
+  document.getElementById('ta-area').innerHTML = '';
+  renderTAHistory();
+  TA = null;
+}
+
+function updateTAStatus() {
+  if (!TA) return;
+  document.getElementById('ta-score').textContent = TA.score;
+  document.getElementById('ta-timer').textContent = TA.timeLeft + 's';
+  document.getElementById('ta-count').textContent = `${TA.correct} / ${TA.wrong}`;
+}
+
+function nextTASentence() {
+  if (!TA) return;
+  if (!TA.remainingSentences.length) {
+    TA.remainingSentences = shuffle(flattenSentences(TA.unit));
   }
-  const html = state.ta.history.map(h => {
-    const cls = h.isCorrect ? 'correct' : 'wrong';
-    const badge = h.isCorrect ? '⭕ 정답' : '❌ 오답';
-    return `<div class="review-item ${cls}">
-      <div class="sec">${badge} · ${escapeHtml(h.sectionHeader)}</div>
-      <div>${h.sentenceHTML}</div>
-      ${!h.isCorrect ? `<div><span class="user">입력: ${escapeHtml(h.userAnswer || '(미입력)')}</span> <span class="ans">정답: ${escapeHtml(h.correctAnswer)}</span></div>` : ''}
-    </div>`;
-  }).join('');
-  taReviewList.innerHTML = html;
-  taReview.classList.remove('hidden');
-}
-
-function updateTAHud() {
-  document.getElementById('ta-remain').textContent = state.ta.remain;
-  document.getElementById('ta-score').textContent = state.ta.score;
-  document.getElementById('ta-correct').textContent = state.ta.correctCount;
-  document.getElementById('ta-wrong').textContent = state.ta.wrongCount;
-}
-
-function nextTAQuestion() {
-  if (!state.ta.running) return;
-  if (state.ta.queue.length === 0) { stopTA(false); return; }
-  const item = state.ta.queue.shift();
-  const blankTokens = item.sent.tokens.filter(t => t.blank_ok);
-  const chosen = blankTokens[Math.floor(Math.random() * blankTokens.length)];
-  state.ta.current = { item, chosen };
-
-  const parts = item.sent.tokens.map(t => {
-    if (t === chosen) {
-      const w = Math.max(4, chosen.core.length + 2);
-      return `<input class="blank" id="ta-blank" size="${w}" autocomplete="off" autofocus />` +
-             escapeHtml(t.trail || '') + (t.josa ? escapeHtml(t.josa) : '');
+  const sent = TA.remainingSentences.shift();
+  TA.currentSentence = sent;
+  const area = document.getElementById('ta-area');
+  area.innerHTML = '';
+  // heading
+  const h = document.createElement('p');
+  h.className = 'section-head';
+  h.textContent = sent.heading;
+  area.appendChild(h);
+  const p = document.createElement('p');
+  p.className = 'sentence';
+  const inputs = [];
+  sent.segments.forEach(seg => {
+    if (seg.blank) {
+      const inp = document.createElement('input');
+      inp.className = 'blank';
+      inp.dataset.answer = seg.answer;
+      inp.size = Math.max(seg.answer.length+1, 5);
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitTA();
+        }
+      });
+      p.appendChild(inp);
+      inputs.push(inp);
+    } else {
+      p.appendChild(document.createTextNode(seg.text));
     }
-    return escapeHtml(t.raw);
   });
-  taArea.innerHTML = `
-    <div class="ws-section-header">${escapeHtml(item.sec.header)}</div>
-    <div class="ws-sentence">· ${parts.join(' ')}</div>
-    <div class="ws-sentence" style="color:#888; font-size:0.88rem;">Enter 또는 입력 확인 버튼</div>
-  `;
-  // 제출 버튼 생성
-  if (!document.getElementById('ta-submit-btn')) {
-    const btn = document.createElement('button');
-    btn.id = 'ta-submit-btn';
-    btn.textContent = '입력 확인';
-    btn.className = 'primary';
-    btn.style.cssText = 'margin-top:10px; padding:9px 18px; border-radius:6px; border:1px solid #2d6ab2; background:#2d6ab2; color:#fff; font-weight:600; cursor:pointer; font-family:inherit;';
-    btn.addEventListener('click', submitTA);
-    taArea.parentNode.insertBefore(btn, taArea.nextSibling);
-  }
-  const inp = document.getElementById('ta-blank');
-  inp.focus();
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); submitTA(); }
-  });
+  area.appendChild(p);
+  // 확인 버튼
+  const btn = document.createElement('button');
+  btn.className = 'btn primary';
+  btn.textContent = '입력 확인';
+  btn.style.marginTop = '12px';
+  btn.addEventListener('click', submitTA);
+  area.appendChild(btn);
+  TA.currentInputs = inputs;
+  if (inputs.length) inputs[0].focus();
 }
 
 function submitTA() {
-  if (!state.ta.running || !state.ta.current) return;
-  const inp = document.getElementById('ta-blank');
-  if (!inp) return;
-  const userVal = inp.value.trim();
-  const { item, chosen } = state.ta.current;
-  const isCorrect = userVal === chosen.core;
-  if (isCorrect) {
-    state.ta.score += 10;
-    state.ta.correctCount++;
-    inp.classList.add('correct');
-    flashFeedback('정답! +10', 'ok');
+  if (!TA || !TA.currentSentence) return;
+  const inputs = TA.currentInputs;
+  const userInputs = [];
+  const correctFlags = [];
+  let allCorrect = true;
+  inputs.forEach(inp => {
+    const v = normalizeAnswer(inp.value);
+    const a = normalizeAnswer(inp.dataset.answer);
+    const ok = (v === a);
+    userInputs.push(inp.value);
+    correctFlags.push(ok);
+    if (!ok) allCorrect = false;
+  });
+  // 점수 반영
+  if (allCorrect && inputs.length > 0) {
+    TA.score += 10;
+    TA.correct++;
+    flash('정답! +10', 'ok');
   } else {
-    state.ta.score = Math.max(0, state.ta.score - 5);
-    state.ta.wrongCount++;
-    inp.classList.add('wrong');
-    flashFeedback(`오답 −5 · 정답: ${chosen.core}`, 'bad');
+    TA.score = Math.max(0, TA.score - 5);
+    TA.wrong++;
+    flash('오답 -5', 'ng');
   }
-  // 복기용 문장 HTML 저장 (정답을 강조)
-  const partsReview = item.sent.tokens.map(t => {
-    if (t === chosen) {
-      return `<b style="color:${isCorrect?'#1e7e34':'#c0392b'};">[${escapeHtml(chosen.core)}]</b>` +
-             escapeHtml(t.trail || '') + (t.josa ? escapeHtml(t.josa) : '');
-    }
-    return escapeHtml(t.raw);
+  // 기록
+  TA.history.push({
+    heading: TA.currentSentence.heading,
+    segments: TA.currentSentence.segments,
+    userInputs,
+    correctFlags,
+    allCorrect,
   });
-  state.ta.history.push({
-    sectionHeader: item.sec.header,
-    sentenceHTML: '· ' + partsReview.join(' '),
-    userAnswer: userVal,
-    correctAnswer: chosen.core,
-    isCorrect,
-  });
-  updateTAHud();
-  // 0.6초 후 다음 문제
-  setTimeout(() => { if (state.ta.running) nextTAQuestion(); }, 600);
+  updateTAStatus();
+  setTimeout(() => { if (TA) nextTASentence(); }, 600);
 }
 
-function flashFeedback(msg, type) {
-  let el = document.getElementById('ta-flash');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'ta-flash';
-    el.style.cssText = 'position:fixed;left:50%;top:30%;transform:translateX(-50%);padding:14px 22px;border-radius:10px;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.2);font-weight:700;font-size:1.1rem;z-index:100;pointer-events:none;transition:opacity .3s;';
-    document.body.appendChild(el);
-  }
-  el.textContent = msg;
-  el.style.color = type === 'ok' ? '#1e7e34' : '#c0392b';
-  el.style.opacity = '1';
-  clearTimeout(el._t);
-  el._t = setTimeout(() => { el.style.opacity = '0'; }, 600);
+function flash(text, cls) {
+  const el = document.getElementById('ta-flash');
+  el.textContent = text;
+  el.className = 'flash show ' + cls;
+  setTimeout(() => { el.classList.remove('show'); }, 550);
 }
+
+function renderTAHistory() {
+  const el = document.getElementById('ta-history');
+  el.innerHTML = '';
+  const score = TA ? TA.score : document.getElementById('ta-score').textContent;
+  const title = document.createElement('h3');
+  title.textContent = `📝 풀이 기록 (${arguments.length > 0 ? '' : ''}${document.getElementById('ta-count').textContent})`;
+  el.appendChild(title);
+  // history from module-level backup (since TA might be nulled)
+  const hist = TA_HISTORY_BACKUP;
+  if (!hist.length) {
+    const p = document.createElement('p');
+    p.style.color = 'var(--muted)';
+    p.style.fontSize = '14px';
+    p.textContent = '풀이 기록이 없습니다.';
+    el.appendChild(p);
+    return;
+  }
+  hist.forEach((h, idx) => {
+    const div = document.createElement('div');
+    div.className = 'history-item ' + (h.allCorrect ? 'ok' : 'ng');
+    const hd = document.createElement('div');
+    hd.className = 'heading';
+    hd.textContent = `${idx+1}. ${h.heading}  ${h.allCorrect ? '⭕' : '❌'}`;
+    div.appendChild(hd);
+    const sentDiv = document.createElement('div');
+    let bi = 0;
+    h.segments.forEach(seg => {
+      if (seg.blank) {
+        const ok = h.correctFlags[bi];
+        const user = h.userInputs[bi] || '(빈칸)';
+        if (ok) {
+          const span = document.createElement('span');
+          span.className = 'ans-ok';
+          span.textContent = seg.answer;
+          sentDiv.appendChild(span);
+        } else {
+          const span1 = document.createElement('span');
+          span1.className = 'ans-ng';
+          span1.textContent = user;
+          sentDiv.appendChild(span1);
+          sentDiv.appendChild(document.createTextNode(' → '));
+          const span2 = document.createElement('span');
+          span2.className = 'ans-correct';
+          span2.textContent = seg.answer;
+          sentDiv.appendChild(span2);
+        }
+        bi++;
+      } else {
+        sentDiv.appendChild(document.createTextNode(seg.text));
+      }
+    });
+    div.appendChild(sentDiv);
+    el.appendChild(div);
+  });
+}
+
+// history backup for when TA ends
+let TA_HISTORY_BACKUP = [];
+const _origEndTA = endTA;
+endTA = function() {
+  if (TA) { TA_HISTORY_BACKUP = TA.history.slice(); }
+  _origEndTA();
+};
+
+loadData();
