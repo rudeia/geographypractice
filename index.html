@@ -1,85 +1,63 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <title>세계시민과 지리 — 빈칸 학습</title>
-  <link rel="stylesheet" href="css/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>세계시민과 지리 빈칸 학습지</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="topbar">
-      <h1>🌏 세계시민과 지리</h1>
-      <nav class="tabs">
-        <button class="tab active" data-tab="study">학습 모드</button>
-        <button class="tab" data-tab="timeattack">타임어택</button>
-      </nav>
-    </header>
+<header class="topbar">
+  <h1>세계시민과 지리 · 빈칸 학습지</h1>
+  <nav class="tabs">
+    <button class="tab active" data-tab="study">학습 모드</button>
+    <button class="tab" data-tab="time">타임어택</button>
+  </nav>
+</header>
 
-    <!-- 학습 모드 -->
-    <section id="tab-study" class="tab-panel active">
-      <div class="controls">
-        <label>단원
-          <select id="unit-select"></select>
-        </label>
-        <label>페이지당 빈칸 수
-          <input type="number" id="blanks-per-page" min="3" max="40" value="10">
-        </label>
-        <button id="btn-reload" class="btn-secondary">새로 시작</button>
+<main>
+  <section id="tab-study" class="pane active">
+    <div class="controls">
+      <label>대단원
+        <select id="unit-select"></select>
+      </label>
+      <label>중단원
+        <select id="middle-select"></select>
+      </label>
+      <label>소단원
+        <select id="sub-select"></select>
+      </label>
+      <div class="nav-btns">
+        <button id="prev-sub">◀ 이전</button>
+        <button id="next-sub">다음 ▶</button>
       </div>
+      <button id="check-btn" class="primary">입력 확인</button>
+      <button id="reveal-btn">정답 보기</button>
+      <span id="score-summary" class="summary"></span>
+    </div>
+    <article id="board" class="board"></article>
+  </section>
 
-      <div class="page-info">
-        <span id="page-indicator">— / —</span>
-        <span id="score-indicator" class="mini">정답 0 · 오답 0</span>
-      </div>
+  <section id="tab-time" class="pane">
+    <div class="controls time-controls">
+      <label>시간(초)
+        <input type="number" id="time-input" value="60" min="10" max="600" step="10">
+      </label>
+      <label>대단원
+        <select id="time-unit-select"></select>
+      </label>
+      <button id="start-btn" class="primary">시작</button>
+      <span class="stat">남은 시간: <b id="time-left">-</b>초</span>
+      <span class="stat">점수: <b id="score">0</b></span>
+    </div>
+    <article id="time-board" class="board"></article>
+    <div id="time-flash" class="flash"></div>
+    <div id="time-result" class="result"></div>
+  </section>
+</main>
 
-      <div id="worksheet" class="worksheet"></div>
+<footer class="watermark">제작 : 안좌고등학교 사회과</footer>
 
-      <div class="action-row">
-        <button id="btn-prev" class="btn-secondary">◀ 이전</button>
-        <button id="btn-check" class="btn-primary">입력 확인</button>
-        <button id="btn-reveal" class="btn-secondary">정답 보기</button>
-        <button id="btn-next" class="btn-primary">다음 ▶</button>
-      </div>
-    </section>
-
-    <!-- 타임어택 모드 -->
-    <section id="tab-timeattack" class="tab-panel">
-      <div class="controls">
-        <label>단원
-          <select id="ta-unit-select"></select>
-        </label>
-        <label>제한 시간(초)
-          <input type="number" id="ta-time" min="30" max="1800" value="180">
-        </label>
-        <button id="ta-start" class="btn-primary">시작</button>
-      </div>
-
-      <div id="ta-play" class="ta-play hidden">
-        <div class="ta-hud">
-          <span class="ta-timer" id="ta-timer">180</span>
-          <span class="ta-score" id="ta-score">0 점</span>
-        </div>
-        <div class="ta-flash" id="ta-flash"></div>
-        <div class="ta-question" id="ta-question"></div>
-        <div class="ta-input-row">
-          <input type="text" id="ta-input" placeholder="정답 입력 후 Enter" autocomplete="off">
-          <button id="ta-submit" class="btn-primary">제출</button>
-        </div>
-      </div>
-
-      <div id="ta-result" class="ta-result hidden">
-        <h2>⏱ 종료!</h2>
-        <p class="ta-final">최종 점수 <strong id="ta-final-score">0</strong>점 · 정답 <strong id="ta-right">0</strong> · 오답 <strong id="ta-wrong">0</strong></p>
-        <button id="ta-again" class="btn-primary">다시하기</button>
-        <h3>📝 풀이 기록</h3>
-        <div id="ta-log" class="ta-log"></div>
-      </div>
-    </section>
-
-    <footer class="watermark">제작 : 안좌고등학교 사회과</footer>
-  </div>
-
-  <script src="js/app.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
