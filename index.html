@@ -1,66 +1,63 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>세계시민과 지리 · 빈칸 학습</title>
-<link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>세계시민과 지리 — 빈칸 학습지</title>
+<link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 <header class="topbar">
-  <h1>세계시민과 지리 <span>· 빈칸 학습</span></h1>
+  <h1>세계시민과 지리 · 빈칸 학습지</h1>
   <nav class="tabs">
     <button class="tab active" data-tab="study">학습 모드</button>
-    <button class="tab" data-tab="attack">타임어택</button>
+    <button class="tab" data-tab="timeattack">타임어택</button>
   </nav>
 </header>
 
 <main>
-  <!-- 학습 모드 -->
-  <section id="study" class="panel active">
+  <!-- ============ 학습 모드 ============ -->
+  <section id="tab-study" class="tab-panel active">
     <div class="controls">
       <label>단원
-        <select id="unitSelect"></select>
+        <select id="unit-select"></select>
       </label>
       <label>빈칸 수
-        <input id="blankCount" type="number" min="1" max="50" value="10">
+        <input type="number" id="blank-count" min="1" max="50" value="10" />
       </label>
-      <button id="btnNew" class="primary">새로 생성</button>
-      <button id="btnShow">정답 보기</button>
+      <button id="btn-new">새 문제</button>
+      <button id="btn-submit" class="primary">입력 확인</button>
+      <button id="btn-reveal" class="ghost">정답 보기</button>
     </div>
-    <div id="paper" class="paper"></div>
-    <div class="statusbar">
-      <span id="progress">0 / 0</span>
-      <span id="unitInfo"></span>
-    </div>
+    <div id="study-area" class="worksheet"></div>
+    <div id="study-feedback" class="feedback"></div>
   </section>
 
-  <!-- 타임어택 -->
-  <section id="attack" class="panel">
+  <!-- ============ 타임어택 ============ -->
+  <section id="tab-timeattack" class="tab-panel">
     <div class="controls">
       <label>단원
-        <select id="taUnitSelect"></select>
+        <select id="ta-unit-select"></select>
       </label>
-      <label>제한 시간(초)
-        <input id="taTime" type="number" min="10" max="600" value="60">
+      <label>시간(초)
+        <input type="number" id="ta-time" min="10" max="600" value="60" />
       </label>
-      <button id="btnStart" class="primary">시작</button>
-      <button id="btnStop" disabled>중지</button>
+      <button id="ta-start" class="primary">시작</button>
+      <button id="ta-stop" class="ghost">종료</button>
     </div>
-    <div class="scorebar">
-      <div class="score-item"><span>점수</span><b id="taScore">0</b></div>
-      <div class="score-item"><span>남은 시간</span><b id="taTimer">--</b></div>
-      <div class="score-item"><span>정답/오답</span><b><span id="taCorrect">0</span>/<span id="taWrong">0</span></b></div>
+    <div class="ta-hud">
+      <span>남은 시간 <b id="ta-remain">--</b>s</span>
+      <span>점수 <b id="ta-score">0</b></span>
+      <span>맞춘 문제 <b id="ta-correct">0</b></span>
+      <span>틀린 문제 <b id="ta-wrong">0</b></span>
     </div>
-    <div id="taStage" class="paper ta-stage">
-      <p class="hint">시작 버튼을 눌러 문제를 풀어보세요. 입력 후 <kbd>Enter</kbd>로 제출합니다.</p>
+    <div id="ta-area" class="worksheet"></div>
+    <div id="ta-review" class="review hidden">
+      <h2>풀이 기록 <small>(초록: 정답 / 빨강: 오답)</small></h2>
+      <div id="ta-review-list"></div>
     </div>
   </section>
 </main>
-
-<footer>
-  <small>세계시민과 지리 · 학습지 기반 빈칸 채우기 · v3</small>
-</footer>
 
 <script src="js/app.js"></script>
 </body>
