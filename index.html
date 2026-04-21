@@ -3,60 +3,91 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>세계시민과 지리 빈칸 학습</title>
+<title>세계시민과 지리 — 빈칸 학습지</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<header class="topbar">
-  <h1>세계시민과 지리 · 빈칸 학습</h1>
-  <nav class="tabs">
-    <button class="tab active" data-tab="study">학습</button>
-    <button class="tab" data-tab="timeattack">타임어택</button>
-  </nav>
-</header>
+<div class="app">
+  <header class="topbar">
+    <h1>세계시민과 지리</h1>
+    <nav class="tabs">
+      <button class="tab active" data-tab="study">학습</button>
+      <button class="tab" data-tab="random">랜덤 학습</button>
+      <button class="tab" data-tab="time">타임어택</button>
+    </nav>
+  </header>
 
-<main id="studyTab" class="tab-content active">
-  <div class="controls">
-    <label>대단원
-      <select id="unitSel"></select>
-    </label>
-    <label>중단원
-      <select id="chapSel"></select>
-    </label>
-    <label>소단원
-      <select id="pageSel"></select>
-    </label>
-    <button id="prevBtn">◀ 이전</button>
-    <button id="nextBtn">다음 ▶</button>
-    <button id="checkBtn" class="primary">입력 확인</button>
-    <button id="revealBtn">정답 보기</button>
-  </div>
-  <div id="studyArea" class="sheet"></div>
-  <div id="studyResult" class="result"></div>
-</main>
+  <!-- 학습 탭 -->
+  <section id="tab-study" class="tab-panel active">
+    <div class="selector">
+      <label>중단원
+        <select id="sel-mu"></select>
+      </label>
+      <label>소단원
+        <select id="sel-su"></select>
+      </label>
+      <label>세부내용
+        <select id="sel-det"></select>
+      </label>
+    </div>
+    <div class="controls">
+      <button id="btn-prev">◀ 이전</button>
+      <button id="btn-check">입력 확인</button>
+      <button id="btn-reveal">정답 보기</button>
+      <button id="btn-next">다음 ▶</button>
+      <span id="study-status" class="status"></span>
+    </div>
+    <div id="board-study" class="board"></div>
+  </section>
 
-<main id="timeattackTab" class="tab-content">
-  <div class="controls">
-    <label>시간(초)
-      <input type="number" id="timeSec" value="60" min="10" max="600">
-    </label>
-    <label>대단원
-      <select id="taUnitSel">
-        <option value="all">전체</option>
-      </select>
-    </label>
-    <button id="taStartBtn" class="primary">시작</button>
-  </div>
-  <div class="ta-status">
-    <span>남은 시간: <b id="taTime">-</b>초</span>
-    <span>점수: <b id="taScore">0</b></span>
-  </div>
-  <div id="taArea" class="sheet"></div>
-  <div id="taFeedback" class="ta-feedback"></div>
-  <div id="taReview" class="ta-review"></div>
-</main>
+  <!-- 랜덤 학습 탭 -->
+  <section id="tab-random" class="tab-panel">
+    <div class="selector">
+      <label>중단원
+        <select id="rnd-mu"></select>
+      </label>
+      <label>문항 수
+        <input id="rnd-count" type="number" min="1" max="30" value="5">
+      </label>
+      <button id="rnd-start" class="primary">시작</button>
+      <button id="rnd-reset" class="ghost">초기화</button>
+    </div>
+    <div class="controls" id="rnd-controls" style="display:none">
+      <button id="rnd-check">입력 확인</button>
+      <button id="rnd-next">다음 문항 ▶</button>
+      <span id="rnd-status" class="status"></span>
+    </div>
+    <div id="board-random" class="board"></div>
+    <div id="rnd-summary" class="summary" style="display:none"></div>
+  </section>
 
-<div class="watermark">제작 : 안좌고등학교 사회과</div>
+  <!-- 타임어택 탭 -->
+  <section id="tab-time" class="tab-panel">
+    <div class="selector">
+      <label>중단원
+        <select id="ta-mu">
+          <option value="__ALL__">전체</option>
+        </select>
+      </label>
+      <label>시간(초)
+        <input id="ta-time" type="number" min="10" max="1800" value="120">
+      </label>
+      <button id="ta-start" class="primary">시작</button>
+      <button id="ta-reset" class="ghost">초기화</button>
+    </div>
+    <div class="ta-hud" id="ta-hud" style="display:none">
+      <span>⏱ <b id="ta-remain">0</b>초</span>
+      <span>점수 <b id="ta-score">0</b></span>
+      <span>정답 <b id="ta-correct">0</b></span>
+      <span>오답 <b id="ta-wrong">0</b></span>
+    </div>
+    <div id="board-time" class="board"></div>
+    <div id="ta-flash" class="flash"></div>
+    <div id="ta-summary" class="summary" style="display:none"></div>
+  </section>
+
+  <div class="watermark">제작 : 안좌고등학교 사회과</div>
+</div>
 
 <script src="js/app.js"></script>
 </body>
