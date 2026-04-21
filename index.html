@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+<title>세계시민과 지리 · 빈칸 학습지</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>세계시민과 지리 · 빈칸 학습지</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="study">📝 학습 모드</button>
+      <button class="tab-btn" data-tab="timeattack">⏱ 타임어택</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- 공통 설정 -->
+    <section class="controls">
+      <label>
+        단원
+        <select id="unitSelect"></select>
+      </label>
+      <label>
+        빈칸 수
+        <input type="number" id="blankCount" value="10" min="1" max="50" />
+      </label>
+      <label id="timeLabel" class="hidden">
+        제한 시간(초)
+        <input type="number" id="timeLimit" value="60" min="10" max="600" />
+      </label>
+      <button id="startBtn" class="primary">시작</button>
+      <button id="checkBtn" class="ghost">정답 확인</button>
+      <button id="resetBtn" class="ghost">다시 섞기</button>
+    </section>
+
+    <!-- 상태 표시 -->
+    <section class="status">
+      <div id="progress" class="status-box">정답 <span id="correctCount">0</span> / <span id="totalCount">0</span></div>
+      <div id="timer" class="status-box hidden">⏱ <span id="timeLeft">60</span>초</div>
+      <div id="score" class="status-box hidden">점수 <span id="scoreVal">0</span></div>
+    </section>
+
+    <!-- 학습지 본문 -->
+    <section id="worksheet" class="worksheet">
+      <p class="empty-hint">상단에서 단원을 선택하고 <b>시작</b> 버튼을 눌러주세요.</p>
+    </section>
+  </main>
+
+  <footer class="footer">© 세계시민과 지리 학습지 · v0.1 MVP</footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
