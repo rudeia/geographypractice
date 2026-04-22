@@ -11,23 +11,50 @@ function norm(s) {
   return String(s).replace(/[\s·•・\/\-_,]/g, '').toLowerCase();
 }
 
-// 정답 글자 수 기반으로 입력칸 너비 계산 (한글은 거의 1em = 1ch 이상)
+// Stable width: based on answer char width; Korean ~1.15em, ASCII ~0.7em
+// + 1.3em reserved for the ✓ mark area (padding-right = 18px ≈ 1.2em)
 function blankWidth(ans) {
-  // 한글 문자 ~ 1em, 영숫자 ~ 0.55em 로 가산
-  let units = 0;
-  for (const c of String(ans)) {
-    units += /[a-zA-Z0-9]/.test(c) ? 0.6 : 1.0;
+  let w = 0;
+  for (const c of (ans || '')) {
+    if (/[a-zA-Z0-9]/.test(c)) w += 0.7;
+    else if (/\s/.test(c)) w += 0.5;
+    else w += 1.15;  // Korean & symbols
   }
-  // 최소 2글자 정도 여유
-  units = Math.max(2, units + 0.3);
-  return units;
+  return Math.max(3.0, w + 1.3).toFixed(2) + 'em';
 }
-function applyBlankWidth(input, ans) {
-  const units = blankWidth(ans);
-  input.style.width = units + 'em';
-  input.style.minWidth = '2.4em';
-  input.style.maxWidth = '14em';
-  input.size = Math.max(2, String(ans).length);
+
+// Create blank input wrapped; wrapper toggles .correct so ✓ appears
+function makeBlank(ans, opts) {
+  opts = opts || {};
+  const wrap = document.createElement('span');
+  wrap.className = 'blank-wrap';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'blank';
+  input.autocomplete = 'off';
+  input.autocapitalize = 'off';
+  input.spellcheck = false;
+  input.style.width = blankWidth(ans);
+  input.dataset.ans = ans;
+  if (opts.idx != null) input.dataset.idx = opts.idx;
+  input.addEventListener('input', (e) => {
+    if (norm(e.target.value) === norm(ans)) {
+      wrap.classList.add('correct');
+      e.target.classList.add('correct');
+      e.target.classList.remove('wrong');
+      if (opts.onCorrect) opts.onCorrect(e.target);
+    } else {
+      wrap.classList.remove('correct');
+      e.target.classList.remove('correct', 'wrong');
+    }
+  });
+  if (opts.onEnter) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); opts.onEnter(input.value, input); }
+    });
+  }
+  wrap.appendChild(input);
+  return { wrap, input };
 }
 
 async function load() {
@@ -77,7 +104,6 @@ function initStudy() {
   document.getElementById('study-next').addEventListener('click', ()=>navStudy(1));
   document.getElementById('study-check').addEventListener('click', checkStudy);
   document.getElementById('study-reveal').addEventListener('click', revealStudy);
-
   fillSubs(); fillDetails(); renderStudy();
 }
 
@@ -145,11 +171,11 @@ function renderStudy() {
   sh.className = 'sub-title';
   sh.textContent = `${s.num}. ${s.title}`;
   b.appendChild(sh);
-  renderDetail(b, d, true);
+  renderDetailEditable(b, d);
 }
 
-// showLiveBadge: true면 입력 중 정답 일치 시 "정답" 뱃지 표시
-function renderDetail(container, d, showLiveBadge) {
+// Render a detail with editable blanks (wrap each input for stable layout)
+function renderDetailEditable(container, d) {
   d.lines.forEach(ln => {
     const el = document.createElement('div');
     el.className = 'detail-line level-' + ln.level;
@@ -159,53 +185,14 @@ function renderDetail(container, d, showLiveBadge) {
         el.appendChild(document.createTextNode(p));
       } else {
         const idx = +p;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'blank';
-        input.dataset.idx = idx;
-        input.autocapitalize = 'off';
-        input.autocomplete = 'off';
-        input.spellcheck = false;
         const ans = d.answers[idx] || '';
-        applyBlankWidth(input, ans);
-
-        // 정답 뱃지 컨테이너
-        const wrap = document.createElement('span');
-        wrap.style.whiteSpace = 'nowrap';
-        wrap.appendChild(input);
-
-        if (showLiveBadge) {
-          const badge = document.createElement('span');
-          badge.className = 'blank-ok';
-          badge.textContent = '정답';
-          badge.style.display = 'none';
-          wrap.appendChild(badge);
-
-          input.addEventListener('input', (e)=>{
-            if (norm(e.target.value) === norm(ans)) {
-              e.target.classList.remove('wrong');
-              e.target.classList.add('correct');
-              badge.style.display = 'inline-block';
-            } else {
-              e.target.classList.remove('correct','wrong');
-              badge.style.display = 'none';
-            }
-          });
-        } else {
-          input.addEventListener('input', (e)=>{
-            if (norm(e.target.value) === norm(ans)) {
-              e.target.classList.remove('wrong');
-              e.target.classList.add('correct');
-            } else {
-              e.target.classList.remove('correct','wrong');
-            }
-          });
-        }
+        const { wrap } = makeBlank(ans, { idx });
         el.appendChild(wrap);
       }
     });
     container.appendChild(el);
   });
+  // Prepend the detail num marker if first line doesn't start with it
   const firstLine = container.querySelectorAll('.detail-line.level-detail')[0];
   if (firstLine && !firstLine.textContent.trim().startsWith(d.num)) {
     firstLine.insertBefore(document.createTextNode(d.num + ' '), firstLine.firstChild);
@@ -215,18 +202,14 @@ function renderDetail(container, d, showLiveBadge) {
 function checkStudy() {
   const b = document.getElementById('study-board');
   b.querySelectorAll('input.blank').forEach(inp => {
-    const idx = +inp.dataset.idx;
-    const d = state.data[state.study.mi].subs[state.study.si].details[state.study.di];
-    const ans = d.answers[idx];
-    const badge = inp.parentElement.querySelector('.blank-ok');
+    const ans = inp.dataset.ans;
+    const wrap = inp.parentElement;
     if (norm(inp.value) === norm(ans)) {
-      inp.classList.remove('wrong');
-      inp.classList.add('correct');
-      if (badge) badge.style.display = 'inline-block';
+      inp.classList.add('correct'); inp.classList.remove('wrong');
+      if (wrap) wrap.classList.add('correct');
     } else {
-      inp.classList.remove('correct');
-      inp.classList.add('wrong');
-      if (badge) badge.style.display = 'none';
+      inp.classList.remove('correct'); inp.classList.add('wrong');
+      if (wrap) wrap.classList.remove('correct');
     }
   });
 }
@@ -234,13 +217,10 @@ function checkStudy() {
 function revealStudy() {
   const b = document.getElementById('study-board');
   b.querySelectorAll('input.blank').forEach(inp => {
-    const idx = +inp.dataset.idx;
-    const d = state.data[state.study.mi].subs[state.study.si].details[state.study.di];
-    inp.value = d.answers[idx];
-    inp.classList.remove('wrong');
-    inp.classList.add('correct');
-    const badge = inp.parentElement.querySelector('.blank-ok');
-    if (badge) badge.style.display = 'inline-block';
+    inp.value = inp.dataset.ans;
+    inp.classList.add('correct'); inp.classList.remove('wrong');
+    const wrap = inp.parentElement;
+    if (wrap) wrap.classList.add('correct');
   });
 }
 
@@ -308,7 +288,7 @@ function renderRandom() {
   sh.className = 'sub-title';
   sh.textContent = `${s.num}. ${s.title}`;
   b.appendChild(sh);
-  renderDetail(b, d, true);  // 랜덤학습도 실시간 정답 뱃지
+  renderDetailEditable(b, d);
 
   const btn = document.createElement('button');
   btn.textContent = state.random.idx === state.random.queue.length - 1 ? '결과 보기' : '다음 문제 ▶';
@@ -369,7 +349,7 @@ function showRandomResult() {
     div.appendChild(path);
     d.lines.forEach(ln => {
       const p = document.createElement('div');
-      p.style.paddingLeft = ln.level === 'item' ? '1.6em' : (ln.level === 'dash' ? '2.6em' : '0');
+      p.style.paddingLeft = ln.level === 'item' ? '2.2em' : (ln.level === 'dash' ? '3.8em' : '0.3em');
       const parts = ln.body.split(/【B(\d+)】/);
       parts.forEach((pp, i) => {
         if (i % 2 === 0) {
@@ -410,7 +390,7 @@ function initAttack() {
 }
 
 function startAttack() {
-  if (state.attack.running) return;
+  if (state.attack.running) return;  // prevent multi-speed
   const miVal = document.getElementById('attack-middle').value;
   const time = +document.getElementById('attack-time').value || 60;
   const pool = [];
@@ -486,6 +466,7 @@ function stopAttack() {
   sum.innerHTML = `<div style="font-size:18px;font-weight:700;color:var(--chalk-yellow);margin-bottom:6px;">타임어택 종료</div>
     최종 점수: <b>${state.attack.score}</b> · 정답 ${correct} · 오답 ${wrong}`;
   r.appendChild(sum);
+  // Dedup: same (m.id|s.num|d.num|bi|user) only once
   const seen = new Set();
   state.attack.records.forEach(rec => {
     const key = `${rec.m.id}|${rec.s.num}|${rec.d.num}|${rec.bi}|${rec.user}`;
@@ -556,22 +537,13 @@ function renderAttack() {
       } else {
         const idx = +p;
         if (idx === bi) {
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.className = 'blank';
-          input.autofocus = true;
-          input.autocapitalize = 'off';
-          input.autocomplete = 'off';
-          input.spellcheck = false;
           const ans = d.answers[idx];
-          applyBlankWidth(input, ans);
-          input.addEventListener('keydown', (e)=>{
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              submitAttack(input.value);
-            }
+          const { wrap, input } = makeBlank(ans, {
+            idx,
+            onEnter: (val) => submitAttack(val)
           });
-          el.appendChild(input);
+          input.autofocus = true;
+          el.appendChild(wrap);
         } else {
           const span = document.createElement('span');
           span.textContent = d.answers[idx];
