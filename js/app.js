@@ -11,18 +11,17 @@ function norm(s) {
   return String(s).replace(/[\s·•・\/\-_,]/g, '').toLowerCase();
 }
 
-// Stable width: based on answer char width; Korean ~1.15em, ASCII ~0.7em
-// + 1.3em reserved for the ✓ mark area (padding-right = 18px ≈ 1.2em)
+// Fixed pixel width — prevents IME-composing reflow (Korean input on mobile)
+// Width is set once and never changes, even during typing. Overflow hidden.
 function blankWidth(ans) {
-  // 16px 폰트 기준으로 한글 글자 폭을 보정 (줄 이탈 방지용 여유폭 포함)
-  let w = 0;
+  let units = 0;
   for (const c of (ans || '')) {
-    if (/[a-zA-Z0-9]/.test(c)) w += 0.62;
-    else if (/\s/.test(c)) w += 0.4;
-    else w += 1.05;  // Korean & symbols
+    if (/[a-zA-Z0-9]/.test(c)) units += 10;           // ASCII ~10px each
+    else if (/\s/.test(c)) units += 6;                // space
+    else units += 17;                                   // Korean/symbol ~17px each
   }
-  // 체크마크(✓) 공간 + 패딩 여유 포함
-  return Math.max(3.0, w + 1.4).toFixed(2) + 'em';
+  // Minimum 56px (for ~3 Korean chars), + 24px reserved for ✓ mark + padding
+  return Math.max(56, units + 24) + 'px';
 }
 
 // Create blank input wrapped; wrapper toggles .correct so ✓ appears
@@ -36,7 +35,9 @@ function makeBlank(ans, opts) {
   input.autocomplete = 'off';
   input.autocapitalize = 'off';
   input.spellcheck = false;
-  input.style.width = blankWidth(ans);
+  const w = blankWidth(ans);
+  input.style.width = w;
+  input.style.maxWidth = w;
   input.dataset.ans = ans;
   if (opts.idx != null) input.dataset.idx = opts.idx;
   input.addEventListener('input', (e) => {
@@ -547,10 +548,12 @@ function renderAttack() {
           input.autofocus = true;
           el.appendChild(wrap);
         } else {
-          // 활성이 아닌 빈칸은 정답 노출 없이 밑줄만 표시 (스포일러 방지)
-          const mask = document.createElement('span');
-          mask.className = 'blank-mask';
-          el.appendChild(mask);
+          // Inactive blank — solid yellow underline, NO text (prevents spoiler),
+          // NO dashes, NO translucency. Same footprint as active blank.
+          const span = document.createElement('span');
+          span.className = 'blank-inactive';
+          span.style.width = blankWidth(d.answers[idx]);
+          el.appendChild(span);
         }
       }
     });
