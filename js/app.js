@@ -11,17 +11,18 @@ function norm(s) {
   return String(s).replace(/[\s·•・\/\-_,]/g, '').toLowerCase();
 }
 
-// Fixed pixel width — prevents IME-composing reflow (Korean input on mobile)
-// Width is set once and never changes, even during typing. Overflow hidden.
+// Stable width: based on answer char width; Korean ~1.15em, ASCII ~0.7em
+// + 1.3em reserved for the ✓ mark area (padding-right = 18px ≈ 1.2em)
 function blankWidth(ans) {
-  let units = 0;
+  // 16px font-size 기준 px 고정 (IME 조합 중 레이아웃 흔들림 방지)
+  let w = 0;
   for (const c of (ans || '')) {
-    if (/[a-zA-Z0-9]/.test(c)) units += 10;           // ASCII ~10px each
-    else if (/\s/.test(c)) units += 6;                // space
-    else units += 17;                                   // Korean/symbol ~17px each
+    if (/[a-zA-Z0-9]/.test(c)) w += 10;       // 영숫자
+    else if (/\s/.test(c)) w += 6;            // 공백
+    else w += 18;                             // 한글/기호
   }
-  // Minimum 56px (for ~3 Korean chars), + 24px reserved for ✓ mark + padding
-  return Math.max(56, units + 24) + 'px';
+  const px = Math.max(60, Math.round(w + 18));
+  return px + 'px';
 }
 
 // Create blank input wrapped; wrapper toggles .correct so ✓ appears
@@ -35,9 +36,9 @@ function makeBlank(ans, opts) {
   input.autocomplete = 'off';
   input.autocapitalize = 'off';
   input.spellcheck = false;
-  const w = blankWidth(ans);
-  input.style.width = w;
-  input.style.maxWidth = w;
+  const _bw = blankWidth(ans);
+  input.style.width = _bw;
+  input.style.maxWidth = _bw;
   input.dataset.ans = ans;
   if (opts.idx != null) input.dataset.idx = opts.idx;
   input.addEventListener('input', (e) => {
@@ -63,10 +64,56 @@ function makeBlank(ans, opts) {
 async function load() {
   const r = await fetch('data/data.json');
   state.data = await r.json();
+  mergeConsecutiveBlanks(state.data);
   initStudy();
   initRandom();
   initAttack();
   bindTabs();
+}
+
+// 연속된 빈칸(【Bx】 【By】)을 하나의 빈칸으로 병합
+// 예: "【B0】 【B1】" + answers=["장소","마케팅"] => "【B0】" + answers=["장소 마케팅"]
+function mergeConsecutiveBlanks(data) {
+  const re = /【B(\d+)】(\s+)【B(\d+)】/;
+  let totalMerged = 0;
+  data.forEach(mid => {
+    (mid.subs || []).forEach(sub => {
+      (sub.details || []).forEach(det => {
+        if (!det.lines || !det.answers) return;
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const ln of det.lines) {
+            const mo = ln.body.match(re);
+            if (!mo) continue;
+            const a = +mo[1], gap = mo[2], c = +mo[3];
+            const mergedAns = det.answers[a] + gap + det.answers[c];
+            // 새 answers 배열 (c 제거)
+            const newAnswers = [];
+            const remap = {};
+            det.answers.forEach((ans, i) => {
+              if (i === c) return;
+              remap[i] = newAnswers.length;
+              newAnswers.push(i === a ? mergedAns : ans);
+            });
+            // 모든 line의 【Bn】 인덱스 재매핑
+            det.lines.forEach(lx => {
+              lx.body = lx.body.replace(/【B(\d+)】/g, (full, n) => {
+                const oi = +n;
+                if (oi === c) return '';
+                return '【B' + remap[oi] + '】';
+              });
+            });
+            det.answers = newAnswers;
+            totalMerged++;
+            changed = true;
+            break;
+          }
+        }
+      });
+    });
+  });
+  console.log('[merge] consecutive blanks merged:', totalMerged);
 }
 
 function bindTabs() {
@@ -548,11 +595,9 @@ function renderAttack() {
           input.autofocus = true;
           el.appendChild(wrap);
         } else {
-          // Inactive blank — solid yellow underline, NO text (prevents spoiler),
-          // NO dashes, NO translucency. Same footprint as active blank.
           const span = document.createElement('span');
-          span.className = 'blank-inactive';
-          span.style.width = blankWidth(d.answers[idx]);
+          span.className = 'blank-context';
+          span.textContent = d.answers[idx];
           el.appendChild(span);
         }
       }
