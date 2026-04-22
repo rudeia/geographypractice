@@ -292,7 +292,7 @@ function renderRandom() {
 
   const btn = document.createElement('button');
   btn.textContent = state.random.idx === state.random.queue.length - 1 ? '결과 보기' : '다음 문제 ▶';
-  btn.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.12);color:var(--chalk);border:1px solid var(--chalk-yellow);border-radius:6px;padding:10px 20px;cursor:pointer;font-family:inherit;font-size:14px;';
+  btn.className = 'board-action-btn';
   btn.addEventListener('click', submitRandom);
   b.appendChild(btn);
 }
@@ -558,7 +558,7 @@ function renderAttack() {
 
   const btn = document.createElement('button');
   btn.textContent = '입력 확인';
-  btn.style.cssText = 'margin-top:16px;background:rgba(255,255,255,0.12);color:var(--chalk);border:1px solid var(--chalk-yellow);border-radius:6px;padding:10px 20px;cursor:pointer;font-family:inherit;font-size:14px;';
+  btn.className = 'board-action-btn';
   btn.addEventListener('click', ()=>{
     const inp = b.querySelector('input.blank');
     if (inp) submitAttack(inp.value);
