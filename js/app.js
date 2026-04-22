@@ -14,13 +14,15 @@ function norm(s) {
 // Stable width: based on answer char width; Korean ~1.15em, ASCII ~0.7em
 // + 1.3em reserved for the ✓ mark area (padding-right = 18px ≈ 1.2em)
 function blankWidth(ans) {
+  // 16px 폰트 기준으로 한글 글자 폭을 보정 (줄 이탈 방지용 여유폭 포함)
   let w = 0;
   for (const c of (ans || '')) {
-    if (/[a-zA-Z0-9]/.test(c)) w += 0.7;
-    else if (/\s/.test(c)) w += 0.5;
-    else w += 1.15;  // Korean & symbols
+    if (/[a-zA-Z0-9]/.test(c)) w += 0.62;
+    else if (/\s/.test(c)) w += 0.4;
+    else w += 1.05;  // Korean & symbols
   }
-  return Math.max(3.0, w + 1.3).toFixed(2) + 'em';
+  // 체크마크(✓) 공간 + 패딩 여유 포함
+  return Math.max(3.0, w + 1.4).toFixed(2) + 'em';
 }
 
 // Create blank input wrapped; wrapper toggles .correct so ✓ appears
@@ -545,11 +547,10 @@ function renderAttack() {
           input.autofocus = true;
           el.appendChild(wrap);
         } else {
-          const span = document.createElement('span');
-          span.textContent = d.answers[idx];
-          span.style.color = 'var(--chalk-dim)';
-          span.style.opacity = '0.5';
-          el.appendChild(span);
+          // 활성이 아닌 빈칸은 정답 노출 없이 밑줄만 표시 (스포일러 방지)
+          const mask = document.createElement('span');
+          mask.className = 'blank-mask';
+          el.appendChild(mask);
         }
       }
     });
